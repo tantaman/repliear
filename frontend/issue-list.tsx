@@ -10,22 +10,23 @@ import IssueRow from "./issue-row";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList } from "react-window";
 import type { Issue, IssueUpdate, Priority, Status } from "./issue";
+import type { PersistentTreeSink } from "@vlcn.io/materialite";
 
 interface Props {
   onUpdateIssues: (issueUpdates: IssueUpdate[]) => void;
   onOpenDetail: (issue: Issue) => void;
-  issues: Issue[];
+  issues: PersistentTreeSink<Issue>["data"];
   view: string | null;
 }
 
 type ListData = {
-  issues: Issue[];
+  issues: PersistentTreeSink<Issue>["data"];
   handleChangePriority: (issue: Issue, priority: Priority) => void;
   handleChangeStatus: (issue: Issue, status: Status) => void;
   onOpenDetail: (issue: Issue) => void;
 };
 
-const itemKey = (index: number, data: ListData) => data.issues[index].id;
+const itemKey = (index: number, data: ListData) => data.issues.at(index).id;
 
 const RawRow = ({
   data,
@@ -38,7 +39,7 @@ const RawRow = ({
 }) => (
   <div style={style}>
     <IssueRow
-      issue={data.issues[index]}
+      issue={data.issues.at(index)}
       onChangePriority={data.handleChangePriority}
       onChangeStatus={data.handleChangeStatus}
       onOpenDetail={data.onOpenDetail}
@@ -90,7 +91,7 @@ const IssueList = ({ onUpdateIssues, onOpenDetail, issues, view }: Props) => {
           <FixedSizeList
             ref={fixedSizeListRef}
             height={height}
-            itemCount={issues.length}
+            itemCount={issues.size}
             itemSize={43}
             itemData={itemData}
             itemKey={itemKey}

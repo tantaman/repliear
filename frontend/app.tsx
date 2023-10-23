@@ -1,7 +1,6 @@
 import React, { memo, useCallback, useEffect, useReducer } from "react";
 import type {
   ExperimentalDiff as Diff,
-  ReadonlyJSONValue,
   ReadTransaction,
   Replicache,
 } from "replicache";
@@ -30,7 +29,7 @@ import TopFilter from "./top-filter";
 import IssueList from "./issue-list";
 import { useQueryState } from "next-usequerystate";
 import IssueBoard from "./issue-board";
-import { isEqual, minBy, partial, pickBy, sortBy, sortedIndexBy } from "lodash";
+import { isEqual, minBy, pickBy } from "lodash";
 import IssueDetail from "./issue-detail";
 import { generateKeyBetween } from "fractional-indexing";
 import { useSubscribe } from "replicache-react";
@@ -38,7 +37,14 @@ import classnames from "classnames";
 import { getPartialSyncState, PartialSyncState } from "./control";
 import type { UndoManager } from "@rocicorp/undo";
 import { HotKeys } from "react-hotkeys";
+import {
+  Materialite,
+  PrimitiveView,
+  PersistentTreeView,
+} from "@vlcn.io/materialite";
+import type { SetSource } from "@vlcn.io/materialite";
 
+const materialite = new Materialite();
 class Filters {
   private readonly _viewStatuses: Set<Status> | undefined;
   private readonly _issuesStatuses: Set<Status> | undefined;
@@ -155,9 +161,11 @@ function getTitle(view: string | null) {
 }
 
 type State = {
-  allIssuesMap: Map<string, Issue>;
-  viewIssueCount: number;
-  filteredIssues: Issue[];
+  issueSource: SetSource<Issue>;
+  viewIssueCount: PrimitiveView<number>;
+  viewIssueCountData: number;
+  filteredIssues: PersistentTreeView<Issue>;
+  filteredIssuesData: PersistentTreeView<Issue>["data"];
   filters: Filters;
   issueOrder: Order;
 };
@@ -211,6 +219,19 @@ function getOrderValue(issueOrder: Order, issue: Issue): string {
   return orderValue;
 }
 
+function makeIssueComparator(ordering: Order) {
+  return (l: Issue, r: Issue) => {
+    const leftKey = getOrderValue(ordering, l);
+    const rightKey = getOrderValue(ordering, r);
+    if (leftKey < rightKey) {
+      return -1;
+    } else if (leftKey > rightKey) {
+      return 1;
+    }
+    return 0;
+  };
+}
+
 function reducer(
   state: State,
   action:
@@ -228,24 +249,9 @@ function reducer(
       }
 ): State {
   const filters = action.type === "setFilters" ? action.filters : state.filters;
-  const issueOrder =
-    action.type === "setIssueOrder" ? action.issueOrder : state.issueOrder;
-  const orderIteratee = partial(getOrderValue, issueOrder);
-  function filterAndSort(issues: Issue[]): Issue[] {
-    return sortBy(
-      issues.filter((issue) => filters.issuesFilter(issue)),
-      orderIteratee
-    );
-  }
-  function countViewIssues(issues: Issue[]): number {
-    let count = 0;
-    for (const issue of issues) {
-      if (filters.viewFilter(issue)) {
-        count++;
-      }
-    }
-    return count;
-  }
+  const issueComparator = makeIssueComparator(
+    action.type === "setIssueOrder" ? action.issueOrder : state.issueOrder
+  );
 
   switch (action.type) {
     case "diff": {
@@ -255,21 +261,29 @@ function reducer(
       if (action.filters.equals(state.filters)) {
         return state;
       }
-      const allIssues = [...state.allIssuesMap.values()];
+      // TODO (mlaw): re-hydrate stream from past events
       return {
         ...state,
-        viewIssueCount: countViewIssues(allIssues),
+        viewIssueCount: state.issueSource.stream
+          .filter(filters.viewFilter)
+          .linearCount()
+          .materialize((s) => new PrimitiveView(s, 0)),
         filters: action.filters,
-        filteredIssues: filterAndSort(allIssues),
+        filteredIssues: state.issueSource.stream
+          .filter(filters.issuesFilter)
+          .materialize((s) => new PersistentTreeView(s, issueComparator)),
       };
     }
     case "setIssueOrder": {
       if (action.issueOrder === state.issueOrder) {
         return state;
       }
+
       return {
         ...state,
-        filteredIssues: sortBy(state.filteredIssues, orderIteratee),
+        filteredIssues: state.issueSource.stream
+          .filter(filters.issuesFilter)
+          .materialize((s) => new PersistentTreeView(s, issueComparator)),
         issueOrder: action.issueOrder,
       };
     }
@@ -282,58 +296,41 @@ function diffReducer(state: State, diff: Diff): State {
   if (diff.length === 0) {
     return state;
   }
-  const newAllIssuesMap = new Map(state.allIssuesMap);
-  let newViewIssueCount = state.viewIssueCount;
-  const newFilteredIssues = [...state.filteredIssues];
-  const orderIteratee = partial(getOrderValue, state.issueOrder);
 
-  function add(key: string, newValue: ReadonlyJSONValue) {
-    const newIssue = issueFromKeyAndValue(key, newValue);
-    newAllIssuesMap.set(key, newIssue);
-    if (state.filters.viewFilter(newIssue)) {
-      newViewIssueCount++;
-    }
-    if (state.filters.issuesFilter(newIssue)) {
-      newFilteredIssues.splice(
-        sortedIndexBy(newFilteredIssues, newIssue, orderIteratee),
-        0,
-        newIssue
-      );
-    }
-  }
-  function del(key: string, oldValue: ReadonlyJSONValue) {
-    const oldIssue = issueFromKeyAndValue(key, oldValue);
-    const index = sortedIndexBy(newFilteredIssues, oldIssue, orderIteratee);
-    newAllIssuesMap.delete(key);
-    if (state.filters.viewFilter(oldIssue)) {
-      newViewIssueCount--;
-    }
-    if (newFilteredIssues[index]?.id === oldIssue.id) {
-      newFilteredIssues.splice(index, 1);
-    }
-  }
-  for (const diffOp of diff) {
-    switch (diffOp.op) {
-      case "add": {
-        add(diffOp.key as string, diffOp.newValue);
-        break;
-      }
-      case "del": {
-        del(diffOp.key as string, diffOp.oldValue);
-        break;
-      }
-      case "change": {
-        del(diffOp.key as string, diffOp.oldValue);
-        add(diffOp.key as string, diffOp.newValue);
-        break;
+  materialite.tx(() => {
+    for (const diffOp of diff) {
+      switch (diffOp.op) {
+        case "add": {
+          state.issueSource.add(
+            issueFromKeyAndValue(diffOp.key as string, diffOp.newValue)
+          );
+          break;
+        }
+        case "del": {
+          state.issueSource.delete(
+            issueFromKeyAndValue(diffOp.key as string, diffOp.oldValue)
+          );
+          break;
+        }
+        case "change": {
+          state.issueSource.delete(
+            issueFromKeyAndValue(diffOp.key as string, diffOp.oldValue)
+          );
+          state.issueSource.add(
+            issueFromKeyAndValue(diffOp.key as string, diffOp.newValue)
+          );
+          break;
+        }
       }
     }
-  }
+  });
+
+  // TODO (mlaw): should we just stick the new sink data
+  // in rather than subscribing?
   return {
     ...state,
-    allIssuesMap: newAllIssuesMap,
-    viewIssueCount: newViewIssueCount,
-    filteredIssues: newFilteredIssues,
+    filteredIssuesData: state.filteredIssues.data,
+    viewIssueCountData: state.viewIssueCount.data,
   };
 }
 
@@ -350,13 +347,29 @@ const App = ({ rep, undoManager }: AppProps) => {
   const [detailIssueID, setDetailIssueID] = useQueryState("iss");
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const [state, dispatch] = useReducer(timedReducer, {
-    allIssuesMap: new Map(),
-    viewIssueCount: 0,
-    filteredIssues: [],
-    filters: getFilters(view, priorityFilter, statusFilter),
-    issueOrder: getIssueOrder(view, orderBy),
-  });
+  const [state, dispatch] = useReducer(
+    timedReducer,
+    {
+      filters: getFilters(view, priorityFilter, statusFilter),
+      issueOrder: getIssueOrder(view, orderBy),
+    },
+    (arg: { filters: Filters; issueOrder: Order }): State => {
+      const source = materialite.newSet<Issue>();
+      const filteredIssueSink = new PersistentTreeView(
+        source.stream,
+        makeIssueComparator(arg.issueOrder)
+      );
+      return {
+        ...arg,
+        issueSource: source,
+        // TODO (mlaw): simpler API for this...
+        filteredIssues: filteredIssueSink,
+        filteredIssuesData: filteredIssueSink.data,
+        viewIssueCount: new PrimitiveView(source.stream.linearCount(), 0),
+        viewIssueCountData: 0,
+      };
+    }
+  );
 
   const partialSync = useSubscribe<
     PartialSyncState | "NOT_RECEIVED_FROM_SERVER"
@@ -404,8 +417,10 @@ const App = ({ rep, undoManager }: AppProps) => {
 
   const handleCreateIssue = useCallback(
     async (issue: Omit<Issue, "kanbanOrder">, description: Description) => {
-      const minKanbanOrderIssue = minBy(
-        [...state.allIssuesMap.values()],
+      // TODO (mlaw): this kanban thing
+      const minKanbanOrderIssue = minBy<Issue>(
+        // [...state.allIssuesMap.values()],
+        [],
         (issue) => issue.kanbanOrder
       );
       const minKanbanOrder = minKanbanOrderIssue
@@ -420,7 +435,7 @@ const App = ({ rep, undoManager }: AppProps) => {
         description,
       });
     },
-    [rep.mutate, state.allIssuesMap]
+    [rep.mutate /*state.allIssuesMap*/]
   );
   const handleCreateComment = useCallback(
     async (comment: Comment) => {
@@ -577,17 +592,17 @@ const RawLayout = ({
               title={getTitle(view)}
               filteredIssuesCount={
                 state.filters.hasNonViewFilters
-                  ? state.filteredIssues.length
+                  ? state.filteredIssuesData.size
                   : undefined
               }
-              issuesCount={state.viewIssueCount}
+              issuesCount={state.viewIssueCountData}
               showSortOrderMenu={view !== "board"}
             />
           </div>
           <div className="relative flex flex-1 min-h-0">
             {detailIssueID && (
               <IssueDetail
-                issues={state.filteredIssues}
+                issues={state.filteredIssuesData}
                 rep={rep}
                 onUpdateIssues={onUpdateIssues}
                 onAddComment={onCreateComment}
@@ -603,13 +618,13 @@ const RawLayout = ({
             >
               {view === "board" ? (
                 <IssueBoard
-                  issues={state.filteredIssues}
+                  issues={state.filteredIssuesData}
                   onUpdateIssues={onUpdateIssues}
                   onOpenDetail={onOpenDetail}
                 />
               ) : (
                 <IssueList
-                  issues={state.filteredIssues}
+                  issues={state.filteredIssuesData}
                   onUpdateIssues={onUpdateIssues}
                   onOpenDetail={onOpenDetail}
                   view={view}

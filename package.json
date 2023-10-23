@@ -40,7 +40,8 @@
     "react-window": "^1.8.6",
     "replicache": ">=13.0.0",
     "replicache-react": "3.0.0",
-    "zod": "^3.13.4"
+    "zod": "^3.13.4",
+    "@vlcn.io/materialite": "file:../vulcan/materialite/public/packages/materialite"
   },
   "devDependencies": {
     "@svgr/webpack": "^6.2.1",
