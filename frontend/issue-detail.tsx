@@ -27,11 +27,12 @@ import { nanoid } from "nanoid";
 import { timeAgo } from "../util/date";
 import { useKeyPressed } from "./hooks/useKeyPressed";
 import { sortBy } from "lodash";
+import type { PersistentTreeView } from "@vlcn.io/materialite";
 
 interface Props {
   onUpdateIssues: (issueUpdates: IssueUpdate[]) => void;
   onAddComment: (comment: Comment) => void;
-  issues: Issue[];
+  issues: PersistentTreeView<Issue>["data"];
   isLoading: boolean;
   rep: Replicache<M>;
 }
@@ -168,12 +169,12 @@ export default function IssueDetail({
         if (currentIssueIdx === 0) {
           return;
         }
-        newIss = issues[currentIssueIdx - 1].id;
+        newIss = issues.at(currentIssueIdx - 1).id;
       } else {
         if (currentIssueIdx === issues.length - 1) {
           return;
         }
-        newIss = issues[currentIssueIdx + 1].id;
+        newIss = issues.at(currentIssueIdx + 1).id;
       }
 
       await setDetailIssueID(newIss, {
