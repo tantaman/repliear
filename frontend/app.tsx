@@ -162,10 +162,10 @@ function getTitle(view: string | null) {
 
 type State = {
   issueSource: SetSource<Issue>;
-  viewIssueCount: PrimitiveView<number>;
-  viewIssueCountData: number;
-  filteredIssues: PersistentTreeView<Issue>;
-  filteredIssuesData: PersistentTreeView<Issue>["data"];
+  views: {
+    issueCount: PrimitiveView<number>;
+    filteredIssues: PersistentTreeView<Issue>;
+  };
   filters: Filters;
   issueOrder: Order;
 };
@@ -264,14 +264,16 @@ function reducer(
       // TODO (mlaw): re-hydrate stream from past events
       return {
         ...state,
-        viewIssueCount: state.issueSource.stream
-          .filter(filters.viewFilter)
-          .linearCount()
-          .materialize((s) => new PrimitiveView(s, 0)),
+        views: {
+          issueCount: state.issueSource.stream
+            .filter(filters.viewFilter)
+            .linearCount()
+            .materialize((s) => new PrimitiveView(s, 0)),
+          filteredIssues: state.issueSource.stream
+            .filter(filters.issuesFilter)
+            .materialize((s) => new PersistentTreeView(s, issueComparator)),
+        },
         filters: action.filters,
-        filteredIssues: state.issueSource.stream
-          .filter(filters.issuesFilter)
-          .materialize((s) => new PersistentTreeView(s, issueComparator)),
       };
     }
     case "setIssueOrder": {
@@ -281,9 +283,12 @@ function reducer(
 
       return {
         ...state,
-        filteredIssues: state.issueSource.stream
-          .filter(filters.issuesFilter)
-          .materialize((s) => new PersistentTreeView(s, issueComparator)),
+        views: {
+          ...state.views,
+          filteredIssues: state.issueSource.stream
+            .filter(filters.issuesFilter)
+            .materialize((s) => new PersistentTreeView(s, issueComparator)),
+        },
         issueOrder: action.issueOrder,
       };
     }
@@ -325,12 +330,8 @@ function diffReducer(state: State, diff: Diff): State {
     }
   });
 
-  // TODO (mlaw): should we just stick the new sink data
-  // in rather than subscribing?
   return {
     ...state,
-    filteredIssuesData: state.filteredIssues.data,
-    viewIssueCountData: state.viewIssueCount.data,
   };
 }
 
@@ -355,18 +356,18 @@ const App = ({ rep, undoManager }: AppProps) => {
     },
     (arg: { filters: Filters; issueOrder: Order }): State => {
       const source = materialite.newSet<Issue>();
-      const filteredIssueSink = new PersistentTreeView(
-        source.stream,
-        makeIssueComparator(arg.issueOrder)
-      );
       return {
         ...arg,
         issueSource: source,
-        // TODO (mlaw): simpler API for this...
-        filteredIssues: filteredIssueSink,
-        filteredIssuesData: filteredIssueSink.data,
-        viewIssueCount: new PrimitiveView(source.stream.linearCount(), 0),
-        viewIssueCountData: 0,
+        views: {
+          issueCount: source.stream
+            .linearCount()
+            .materialize((s) => new PrimitiveView(s, 0)),
+          filteredIssues: source.stream.materialize(
+            (s) =>
+              new PersistentTreeView(s, makeIssueComparator(arg.issueOrder))
+          ),
+        },
       };
     }
   );
@@ -592,17 +593,17 @@ const RawLayout = ({
               title={getTitle(view)}
               filteredIssuesCount={
                 state.filters.hasNonViewFilters
-                  ? state.filteredIssuesData.size
+                  ? state.views.filteredIssues.data.size
                   : undefined
               }
-              issuesCount={state.viewIssueCountData}
+              issuesCount={state.views.issueCount.data}
               showSortOrderMenu={view !== "board"}
             />
           </div>
           <div className="relative flex flex-1 min-h-0">
             {detailIssueID && (
               <IssueDetail
-                issues={state.filteredIssuesData}
+                issues={state.views.filteredIssues.data}
                 rep={rep}
                 onUpdateIssues={onUpdateIssues}
                 onAddComment={onCreateComment}
@@ -618,13 +619,13 @@ const RawLayout = ({
             >
               {view === "board" ? (
                 <IssueBoard
-                  issues={state.filteredIssuesData}
+                  issues={state.views.filteredIssues.data}
                   onUpdateIssues={onUpdateIssues}
                   onOpenDetail={onOpenDetail}
                 />
               ) : (
                 <IssueList
-                  issues={state.filteredIssuesData}
+                  issues={state.views.filteredIssues.data}
                   onUpdateIssues={onUpdateIssues}
                   onOpenDetail={onOpenDetail}
                   view={view}
