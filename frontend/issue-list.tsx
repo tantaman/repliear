@@ -10,17 +10,17 @@ import IssueRow from "./issue-row";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList } from "react-window";
 import type { Issue, IssueUpdate, Priority, Status } from "./issue";
-import type { PersistentTreeSink } from "@vlcn.io/materialite";
+import type { PersistentTreeView } from "@vlcn.io/materialite";
 
 interface Props {
   onUpdateIssues: (issueUpdates: IssueUpdate[]) => void;
   onOpenDetail: (issue: Issue) => void;
-  issues: PersistentTreeSink<Issue>["data"];
+  issues: PersistentTreeView<Issue>["data"];
   view: string | null;
 }
 
 type ListData = {
-  issues: PersistentTreeSink<Issue>["data"];
+  issues: PersistentTreeView<Issue>["data"];
   handleChangePriority: (issue: Issue, priority: Priority) => void;
   handleChangeStatus: (issue: Issue, status: Status) => void;
   onOpenDetail: (issue: Issue) => void;

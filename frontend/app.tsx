@@ -102,11 +102,11 @@ class Filters {
     }
   }
 
-  viewFilter(issue: Issue): boolean {
+  viewFilter = (issue: Issue): boolean => {
     return this._viewStatuses ? this._viewStatuses.has(issue.status) : true;
-  }
+  };
 
-  issuesFilter(issue: Issue): boolean {
+  issuesFilter = (issue: Issue): boolean => {
     if (this._issuesStatuses) {
       if (!this._issuesStatuses.has(issue.status)) {
         return false;
@@ -118,7 +118,7 @@ class Filters {
       }
     }
     return true;
-  }
+  };
 
   equals(other: Filters): boolean {
     return (
@@ -219,12 +219,23 @@ function getOrderValue(issueOrder: Order, issue: Issue): string {
   return orderValue;
 }
 
-function makeIssueComparator(ordering: Order) {
-  return (l: Issue, r: Issue) => {
-    const leftKey = getOrderValue(ordering, l);
-    const rightKey = getOrderValue(ordering, r);
+function issueCountView(
+  source: SetSource<Issue>,
+  filter: (i: Issue) => boolean
+) {
+  return source.stream.filter(filter).size().materializePrimitive(0);
+}
+
+function filteredIssuesView(
+  source: SetSource<Issue>,
+  order: Order,
+  filter: (i: Issue) => boolean
+) {
+  return source.stream.filter(filter).materialize((l: Issue, r: Issue) => {
+    const leftKey = getOrderValue(order, l);
+    const rightKey = getOrderValue(order, r);
     return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-  };
+  });
 }
 
 function reducer(
@@ -244,9 +255,8 @@ function reducer(
       }
 ): State {
   const filters = action.type === "setFilters" ? action.filters : state.filters;
-  const issueComparator = makeIssueComparator(
-    action.type === "setIssueOrder" ? action.issueOrder : state.issueOrder
-  );
+  const issueOrder =
+    action.type === "setIssueOrder" ? action.issueOrder : state.issueOrder;
 
   switch (action.type) {
     case "diff": {
@@ -260,13 +270,12 @@ function reducer(
       return {
         ...state,
         views: {
-          issueCount: state.issueSource.stream
-            .filter(filters.viewFilter)
-            .size()
-            .materializePrimitive(0),
-          filteredIssues: state.issueSource.stream
-            .filter(filters.issuesFilter)
-            .materialize(issueComparator),
+          issueCount: issueCountView(state.issueSource, filters.viewFilter),
+          filteredIssues: filteredIssuesView(
+            state.issueSource,
+            issueOrder,
+            filters.issuesFilter
+          ),
         },
         filters: action.filters,
       };
@@ -280,9 +289,11 @@ function reducer(
         ...state,
         views: {
           ...state.views,
-          filteredIssues: state.issueSource.stream
-            .filter(filters.issuesFilter)
-            .materialize(issueComparator),
+          filteredIssues: filteredIssuesView(
+            state.issueSource,
+            issueOrder,
+            filters.issuesFilter
+          ),
         },
         issueOrder: action.issueOrder,
       };
@@ -342,7 +353,7 @@ const App = ({ rep, undoManager }: AppProps) => {
   const [orderBy] = useQueryState("orderBy");
   const [detailIssueID, setDetailIssueID] = useQueryState("iss");
   const [menuVisible, setMenuVisible] = useState(false);
-
+  // sdf
   const [state, dispatch] = useReducer(
     timedReducer,
     {
@@ -355,9 +366,11 @@ const App = ({ rep, undoManager }: AppProps) => {
         ...arg,
         issueSource: source,
         views: {
-          issueCount: source.stream.size().materializePrimitive(0),
-          filteredIssues: source.stream.materialize(
-            makeIssueComparator(arg.issueOrder)
+          issueCount: issueCountView(source, arg.filters.viewFilter),
+          filteredIssues: filteredIssuesView(
+            source,
+            arg.issueOrder,
+            arg.filters.issuesFilter
           ),
         },
       };
