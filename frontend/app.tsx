@@ -223,12 +223,7 @@ function makeIssueComparator(ordering: Order) {
   return (l: Issue, r: Issue) => {
     const leftKey = getOrderValue(ordering, l);
     const rightKey = getOrderValue(ordering, r);
-    if (leftKey < rightKey) {
-      return -1;
-    } else if (leftKey > rightKey) {
-      return 1;
-    }
-    return 0;
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
   };
 }
 
@@ -267,11 +262,11 @@ function reducer(
         views: {
           issueCount: state.issueSource.stream
             .filter(filters.viewFilter)
-            .linearCount()
-            .materialize((s) => new PrimitiveView(s, 0)),
+            .size()
+            .materializePrimitive(0),
           filteredIssues: state.issueSource.stream
             .filter(filters.issuesFilter)
-            .materialize((s) => new PersistentTreeView(s, issueComparator)),
+            .materialize(issueComparator),
         },
         filters: action.filters,
       };
@@ -287,7 +282,7 @@ function reducer(
           ...state.views,
           filteredIssues: state.issueSource.stream
             .filter(filters.issuesFilter)
-            .materialize((s) => new PersistentTreeView(s, issueComparator)),
+            .materialize(issueComparator),
         },
         issueOrder: action.issueOrder,
       };
@@ -360,12 +355,9 @@ const App = ({ rep, undoManager }: AppProps) => {
         ...arg,
         issueSource: source,
         views: {
-          issueCount: source.stream
-            .linearCount()
-            .materialize((s) => new PrimitiveView(s, 0)),
+          issueCount: source.stream.size().materializePrimitive(0),
           filteredIssues: source.stream.materialize(
-            (s) =>
-              new PersistentTreeView(s, makeIssueComparator(arg.issueOrder))
+            makeIssueComparator(arg.issueOrder)
           ),
         },
       };
