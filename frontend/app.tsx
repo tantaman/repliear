@@ -330,10 +330,8 @@ const App = ({ rep, undoManager }: AppProps) => {
 
   const handleCreateIssue = useCallback(
     async (issue: Omit<Issue, "kanbanOrder">, description: Description) => {
-      // TODO (mlaw): this kanban thing
       const minKanbanOrderIssue = minBy<Issue>(
-        // [...state.allIssuesMap.values()],
-        [],
+        [...allIssueSet.data], // TODO: lazy minBy or incrementally maintain this?
         (issue) => issue.kanbanOrder
       );
       const minKanbanOrder = minKanbanOrderIssue
