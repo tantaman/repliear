@@ -1,6 +1,7 @@
+import type { DifferenceStream } from "@vlcn.io/materialite";
 import { generateNKeysBetween } from "fractional-indexing";
 import { groupBy, indexOf } from "lodash";
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useEffect } from "react";
 import { DragDropContext, DropResult } from "react-beautiful-dnd";
 
 import { Status, Issue, IssueUpdate, Priority } from "./issue";
@@ -71,13 +72,16 @@ export function getKanbanOrderIssueUpdates(
 }
 
 interface Props {
-  issues: Issue[];
+  issueStream: DifferenceStream<Issue>;
   onUpdateIssues: (issueUpdates: IssueUpdate[]) => void;
   onOpenDetail: (issue: Issue) => void;
 }
 
-function IssueBoard({ issues, onUpdateIssues, onOpenDetail }: Props) {
+function IssueBoard({ issueStream, onUpdateIssues, onOpenDetail }: Props) {
   const issuesByType = getIssueByType(issues); // TODO (mlaw): incrementalize
+  useEffect(() => {
+    return () => {};
+  }, [issueStream]);
 
   const handleDragEnd = useCallback(
     ({ source, destination }: DropResult) => {

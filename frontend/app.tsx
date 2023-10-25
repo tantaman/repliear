@@ -37,6 +37,7 @@ import type { UndoManager } from "@rocicorp/undo";
 import { HotKeys } from "react-hotkeys";
 import {
   IMemorableSource,
+  DifferenceStream,
   Materialite,
   PersistentTreap,
   PersistentTreeView,
@@ -209,6 +210,9 @@ const App = ({ rep, undoManager }: AppProps) => {
     filteredIssues: new PersistentTreap(),
     hasNonViewFilters: false,
   });
+  const [filteredIssueStream, setFilteredIssueStream] = useState<
+    DifferenceStream<Issue>
+  >(allIssueSet.stream);
 
   useEffect(() => {
     const start = performance.now();
@@ -399,6 +403,7 @@ const App = ({ rep, undoManager }: AppProps) => {
         detailIssueID={detailIssueID}
         isLoading={!partialSyncComplete}
         state={issueViews}
+        issueStream={filteredIssueStream}
         rep={rep}
         onCloseMenu={handleCloseMenu}
         onToggleMenu={handleToggleMenu}
@@ -422,6 +427,7 @@ interface LayoutProps {
   detailIssueID: string | null;
   isLoading: boolean;
   state: IssueViews;
+  issueStream: DifferenceStream<Issue>;
   rep: Replicache<M>;
   onCloseMenu: () => void;
   onToggleMenu: () => void;
@@ -440,6 +446,7 @@ const RawLayout = ({
   detailIssueID,
   isLoading,
   state,
+  issueStream,
   rep,
   onCloseMenu,
   onToggleMenu,
@@ -491,7 +498,7 @@ const RawLayout = ({
             >
               {view === "board" ? (
                 <IssueBoard
-                  issues={state.filteredIssues}
+                  issueStream={issueStream}
                   onUpdateIssues={onUpdateIssues}
                   onOpenDetail={onOpenDetail}
                 />
