@@ -77,7 +77,7 @@ interface Props {
 }
 
 function IssueBoard({ issues, onUpdateIssues, onOpenDetail }: Props) {
-  const issuesByType = getIssueByType(issues);
+  const issuesByType = getIssueByType(issues); // TODO (mlaw): incrementalize
 
   const handleDragEnd = useCallback(
     ({ source, destination }: DropResult) => {

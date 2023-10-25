@@ -196,11 +196,13 @@ function filteredIssuesView(
   order: Order,
   filter: (i: Issue) => boolean
 ) {
-  return source.stream
-    .filter(filter)
-    .materialize((l: Issue, r: Issue) =>
-      getOrderValue(order, l).localeCompare(getOrderValue(order, r))
-    );
+  return source.stream.filter(filter).materialize((l: Issue, r: Issue) => {
+    const comp = getOrderValue(order, l).localeCompare(getOrderValue(order, r));
+    if (comp === 0) {
+      return l.id.localeCompare(r.id);
+    }
+    return comp;
+  });
 }
 
 function onNewDiff(diff: Diff) {
@@ -330,10 +332,8 @@ const App = ({ rep, undoManager }: AppProps) => {
 
   const handleCreateIssue = useCallback(
     async (issue: Omit<Issue, "kanbanOrder">, description: Description) => {
-      // TODO (mlaw): this kanban thing
       const minKanbanOrderIssue = minBy<Issue>(
-        // [...state.allIssuesMap.values()],
-        [],
+        [...allIssueSet.data], // TODO: lazy minBy or incrementally maintain this?
         (issue) => issue.kanbanOrder
       );
       const minKanbanOrder = minKanbanOrderIssue
