@@ -225,7 +225,7 @@ function onNewDiff(diff: Diff) {
   });
 
   const duration = performance.now() - start;
-  console.log(`Diff duration: ${duration}`);
+  console.log(`Diff duration: ${duration}ms`);
 }
 
 type AppProps = {
@@ -259,6 +259,7 @@ const App = ({ rep, undoManager }: AppProps) => {
   });
 
   useEffect(() => {
+    const start = performance.now();
     const filters = getFilters(view, priorityFilter, statusFilter);
     const order = getIssueOrder(view, orderBy);
     const filterView = filteredIssuesView(
@@ -267,7 +268,7 @@ const App = ({ rep, undoManager }: AppProps) => {
       filters.issuesFilter
     );
     const countView = issueCountView(allIssueSet, filters.viewFilter);
-    const removeFilterListener = filterView.onChange((data) => {
+    filterView.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
         allIssues: allIssueSet.data,
@@ -275,7 +276,7 @@ const App = ({ rep, undoManager }: AppProps) => {
         hasNonViewFilters: filters.hasNonViewFilters,
       }));
     });
-    const removeCountListener = countView.onChange((data) => {
+    countView.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
         allIssues: allIssueSet.data,
@@ -283,7 +284,7 @@ const App = ({ rep, undoManager }: AppProps) => {
         hasNonViewFilters: filters.hasNonViewFilters,
       }));
     });
-    const removeAllIssueListener = allIssueSet.onChange((data) => {
+    allIssueSet.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
         allIssues: data,
@@ -293,10 +294,12 @@ const App = ({ rep, undoManager }: AppProps) => {
     // TODO (mlaw): remove the need for this call.
     // The framework knows when new views are attached and when this is needed.
     allIssueSet.recomputeAll();
+    const end = performance.now();
+    console.log(`Filter update duration: ${end - start}ms`);
     return () => {
-      removeFilterListener();
-      removeCountListener();
-      removeAllIssueListener();
+      // Detaching at the source isn't really composable. Views should be destroyed
+      // and operators should be ref counted and remove themselves once their consumers are gone.
+      allIssueSet.detachPipelines();
     };
   }, [priorityFilter, statusFilter, orderBy, view]);
 
