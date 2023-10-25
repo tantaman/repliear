@@ -10,10 +10,10 @@ type Comparison = ">=" | "<=";
 
 export function hasNonViewFilters(
   viewStatuses: Set<string>,
-  statuses: Set<string>
+  statuses: Set<Status>
 ) {
   for (const s of statuses) {
-    if (!viewStatuses?.has(s)) {
+    if (!viewStatuses.has(s)) {
       return true;
     }
   }
@@ -65,18 +65,31 @@ export function getPriorities(priorityFilter: string | null): Set<Priority> {
 
 export function getPriorityFilter(
   priorities: Set<Priority>
-): (issue: Issue) => boolean {
-  return (issue) =>
-    priorities.size === 0 ? true : priorities.has(issue.priority);
+): null | ((issue: Issue) => boolean) {
+  if (priorities.size === 0) {
+    return null;
+  }
+  return (issue) => priorities.has(issue.priority);
 }
 
 export function getStatusFilter(
   viewStatuses: Set<Status>,
   statuses: Set<Status>
-): (issue: Issue) => boolean {
+): null | ((issue: Issue) => boolean) {
   const allStatuses = new Set<Status>([...viewStatuses, ...statuses]);
-  return (issue) =>
-    allStatuses.size === 0 ? true : allStatuses.has(issue.status);
+  if (allStatuses.size === 0) {
+    return null;
+  }
+  return (issue) => allStatuses.has(issue.status);
+}
+
+export function getCreatorFilter(
+  creators: Set<string>
+): null | ((issue: Issue) => boolean) {
+  if (creators.size === 0) {
+    return null;
+  }
+  return (issue) => creators.has(issue.creator.toLowerCase());
 }
 
 export function getViewFilter(
@@ -113,16 +126,6 @@ export function getCreators(creatorFilter: string | null): Set<string> {
   }
 
   return creators;
-}
-
-export function getCreatorFilter(
-  creators: Set<string>
-): (issue: Issue) => boolean {
-  return (issue) => {
-    const ret =
-      creators.size === 0 ? true : creators.has(issue.creator.toLowerCase());
-    return ret;
-  };
 }
 
 export function getTitleFilter(title: string): (issue: Issue) => boolean {

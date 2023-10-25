@@ -36,6 +36,7 @@ import { HotKeys } from "react-hotkeys";
 import {
   IMemorableSource,
   Materialite,
+  PersistentTreap,
   PersistentTreeView,
 } from "@vlcn.io/materialite";
 import {
@@ -47,7 +48,7 @@ import {
   getStatusFilter,
   getViewFilter,
   getViewStatuses,
-  hasNonViewFilters,
+  hasNonViewFilters as doesHaveNonViewFilters,
 } from "./filters";
 
 const materialite = new Materialite();
@@ -111,10 +112,13 @@ function issueCountView(
 function filteredIssuesView(
   source: IMemorableSource<Issue, Map<string, Issue>>,
   order: Order,
-  filters: ((i: Issue) => boolean)[]
+  filters: (((i: Issue) => boolean) | null)[]
 ) {
   let { stream } = source;
   for (const f of filters) {
+    if (!f) {
+      continue;
+    }
     stream = stream.filter(f);
   }
   return stream.materialize((l: Issue, r: Issue) => {
@@ -176,7 +180,7 @@ const App = ({ rep, undoManager }: AppProps) => {
 
   const [issueViews, setIssueViews] = useState<IssueViews>({
     issueCount: 0,
-    filteredIssues: allIssueSet.data,
+    filteredIssues: new PersistentTreap(),
     hasNonViewFilters: false,
   });
 
@@ -184,28 +188,36 @@ const App = ({ rep, undoManager }: AppProps) => {
     const start = performance.now();
     const viewStatuses = getViewStatuses(view);
     const statuses = getStatuses(statusFilter);
-    const issueFilter = getStatusFilter(viewStatuses, statuses);
-    const viewFilter = getViewFilter(viewStatuses);
+    const statusFilterFn = getStatusFilter(viewStatuses, statuses);
+    const viewFilterFn = getViewFilter(viewStatuses);
+    const priorityFilterFn = getPriorityFilter(getPriorities(priorityFilter));
+    const creatorFilterFn = getCreatorFilter(getCreators(creatorFilter));
+    const hasNonViewFilters = !!(
+      doesHaveNonViewFilters(viewStatuses, statuses) ||
+      priorityFilterFn ||
+      creatorFilterFn
+    );
+    console.log("has non view filters", hasNonViewFilters);
 
     const order = getIssueOrder(view, orderBy);
     const filterView = filteredIssuesView(allIssueSet, order, [
-      issueFilter,
-      getPriorityFilter(getPriorities(priorityFilter)),
-      getCreatorFilter(getCreators(creatorFilter)),
+      statusFilterFn,
+      priorityFilterFn,
+      creatorFilterFn,
     ]);
-    const countView = issueCountView(allIssueSet, viewFilter);
+    const countView = issueCountView(allIssueSet, viewFilterFn);
     filterView.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
         filteredIssues: data,
-        hasNonViewFilters: hasNonViewFilters(viewStatuses, statuses),
+        hasNonViewFilters,
       }));
     });
     countView.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
         issueCount: data,
-        hasNonViewFilters: hasNonViewFilters(viewStatuses, statuses),
+        hasNonViewFilters,
       }));
     });
     // TODO (mlaw): remove the need for this call.
