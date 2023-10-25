@@ -37,8 +37,11 @@ import classnames from "classnames";
 import { getPartialSyncState, PartialSyncState } from "./control";
 import type { UndoManager } from "@rocicorp/undo";
 import { HotKeys } from "react-hotkeys";
-import { Materialite, PersistentTreeView } from "@vlcn.io/materialite";
-import type { PersistentSetSource } from "@vlcn.io/materialite";
+import {
+  IMemorableSource,
+  Materialite,
+  PersistentTreeView,
+} from "@vlcn.io/materialite";
 
 const materialite = new Materialite();
 class Filters {
@@ -185,14 +188,14 @@ function getOrderValue(issueOrder: Order, issue: Issue): string {
 }
 
 function issueCountView(
-  source: PersistentSetSource<Issue>,
+  source: IMemorableSource<Issue, Map<string, Issue>>,
   filter: (i: Issue) => boolean
 ) {
   return source.stream.filter(filter).size().materializePrimitive(0);
 }
 
 function filteredIssuesView(
-  source: PersistentSetSource<Issue>,
+  source: IMemorableSource<Issue, Map<string, Issue>>,
   order: Order,
   filter: (i: Issue) => boolean
 ) {
@@ -235,11 +238,10 @@ type AppProps = {
   undoManager: UndoManager;
 };
 
-const allIssueSet = materialite.newPersistentSet<Issue>((l, r) =>
-  l.id.localeCompare(r.id)
+const allIssueSet = materialite.newMutableMap<string, Issue>(
+  (issue) => issue.id
 );
 type IssueViews = {
-  allIssues: PersistentSetSource<Issue>["data"];
   filteredIssues: PersistentTreeView<Issue>["data"];
   issueCount: number;
   hasNonViewFilters: boolean;
@@ -254,7 +256,6 @@ const App = ({ rep, undoManager }: AppProps) => {
   const [menuVisible, setMenuVisible] = useState(false);
 
   const [issueViews, setIssueViews] = useState<IssueViews>({
-    allIssues: allIssueSet.data,
     issueCount: 0,
     filteredIssues: allIssueSet.data,
     hasNonViewFilters: false,
@@ -273,7 +274,6 @@ const App = ({ rep, undoManager }: AppProps) => {
     filterView.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
-        allIssues: allIssueSet.data,
         filteredIssues: data,
         hasNonViewFilters: filters.hasNonViewFilters,
       }));
@@ -281,15 +281,7 @@ const App = ({ rep, undoManager }: AppProps) => {
     countView.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
-        allIssues: allIssueSet.data,
         issueCount: data,
-        hasNonViewFilters: filters.hasNonViewFilters,
-      }));
-    });
-    allIssueSet.onChange((data) => {
-      setIssueViews((last) => ({
-        ...last,
-        allIssues: data,
         hasNonViewFilters: filters.hasNonViewFilters,
       }));
     });
@@ -333,7 +325,8 @@ const App = ({ rep, undoManager }: AppProps) => {
   const handleCreateIssue = useCallback(
     async (issue: Omit<Issue, "kanbanOrder">, description: Description) => {
       const minKanbanOrderIssue = minBy<Issue>(
-        [...allIssueSet.data], // TODO: lazy minBy or incrementally maintain this?
+        [],
+        // [...allIssueSet.data], // TODO: lazy minBy or incrementally maintain this?
         (issue) => issue.kanbanOrder
       );
       const minKanbanOrder = minKanbanOrderIssue
