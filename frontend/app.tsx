@@ -39,6 +39,8 @@ import {
   PersistentTreeView,
 } from "@vlcn.io/materialite";
 import {
+  getCreatorFilter,
+  getCreators,
   getPriorities,
   getPriorityFilter,
   getStatuses,
@@ -167,6 +169,7 @@ const App = ({ rep, undoManager }: AppProps) => {
   const [view] = useQueryState("view");
   const [priorityFilter] = useQueryState("priorityFilter");
   const [statusFilter] = useQueryState("statusFilter");
+  const [creatorFilter] = useQueryState("creatorFilter");
   const [orderBy] = useQueryState("orderBy");
   const [detailIssueID, setDetailIssueID] = useQueryState("iss");
   const [menuVisible, setMenuVisible] = useState(false);
@@ -188,6 +191,7 @@ const App = ({ rep, undoManager }: AppProps) => {
     const filterView = filteredIssuesView(allIssueSet, order, [
       issueFilter,
       getPriorityFilter(getPriorities(priorityFilter)),
+      getCreatorFilter(getCreators(creatorFilter)),
     ]);
     const countView = issueCountView(allIssueSet, viewFilter);
     filterView.onChange((data) => {
@@ -214,7 +218,7 @@ const App = ({ rep, undoManager }: AppProps) => {
       // and operators should be ref counted and remove themselves once their consumers are gone.
       allIssueSet.detachPipelines();
     };
-  }, [priorityFilter, statusFilter, orderBy, view]);
+  }, [priorityFilter, statusFilter, orderBy, view, creatorFilter]);
 
   const partialSync = useSubscribe<
     PartialSyncState | "NOT_RECEIVED_FROM_SERVER"

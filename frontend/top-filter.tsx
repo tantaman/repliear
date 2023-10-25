@@ -80,6 +80,10 @@ const TopFilter = ({
       queryTypes.stringEnum<Priority>(Object.values(Priority))
     )
   );
+  const [creatorFilters, setCreatorFilterByParam] = useQueryState(
+    "creatorFilter",
+    queryTypes.array<string>(queryTypes.string)
+  );
 
   return (
     <>
@@ -121,6 +125,17 @@ const TopFilter = ({
               }
               await setStatusFilterByParam(
                 statusSet.size === 0 ? null : [...statusSet]
+              );
+            }}
+            onCreatorEntered={async (creator) => {
+              const creatorSet = new Set(creatorFilters);
+              if (creatorSet.has(creator)) {
+                creatorSet.delete(creator);
+              } else {
+                creatorSet.add(creator);
+              }
+              await setCreatorFilterByParam(
+                creatorSet.size === 0 ? null : [...creatorSet]
               );
             }}
           />

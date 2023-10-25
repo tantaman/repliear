@@ -102,8 +102,27 @@ export function getCreatedFilter(
     op === "<=" ? issue.created <= time : issue.created >= time;
 }
 
-export function getCreatorFilter(creator: string): (issue: Issue) => boolean {
-  return (issue) => issue.creator.toLowerCase() === creator.toLowerCase();
+export function getCreators(creatorFilter: string | null): Set<string> {
+  const creators = new Set<string>();
+  if (!creatorFilter) {
+    return creators;
+  }
+
+  for (const c of creatorFilter.split(",")) {
+    creators.add(c.toLowerCase());
+  }
+
+  return creators;
+}
+
+export function getCreatorFilter(
+  creators: Set<string>
+): (issue: Issue) => boolean {
+  return (issue) => {
+    const ret =
+      creators.size === 0 ? true : creators.has(issue.creator.toLowerCase());
+    return ret;
+  };
 }
 
 export function getTitleFilter(title: string): (issue: Issue) => boolean {

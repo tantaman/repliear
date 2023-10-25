@@ -77,6 +77,7 @@ export type OrderEnum = z.infer<typeof orderEnumSchema>;
 export enum Filter {
   PRIORITY,
   STATUS,
+  CREATOR,
 }
 
 const filterEnumSchema = z.nativeEnum(Filter);

@@ -1,17 +1,23 @@
-import React, { RefObject, useRef, useState } from "react";
+import React, { KeyboardEvent, RefObject, useRef, useState } from "react";
 import { usePopper } from "react-popper";
 import { Filter, Priority, Status } from "./issue";
 import { useClickOutside } from "./hooks/useClickOutside";
 import SignalStrongIcon from "./assets/icons/signal-strong.svg";
 import TodoIcon from "./assets/icons/circle.svg";
+import UserIcon from "./assets/icons/avatar.svg";
 import { statusOpts } from "./priority-menu";
 import { statuses } from "./status-menu";
 interface Props {
   onSelectStatus: (filter: Status) => void;
   onSelectPriority: (filter: Priority) => void;
+  onCreatorEntered: (creator: string) => void;
 }
 
-const FilterMenu = ({ onSelectStatus, onSelectPriority }: Props) => {
+const FilterMenu = ({
+  onSelectStatus,
+  onSelectPriority,
+  onCreatorEntered,
+}: Props) => {
   const [filterRef, setFilterRef] = useState<HTMLButtonElement | null>(null);
   const [popperRef, setPopperRef] = useState<HTMLDivElement | null>(null);
   const [filter, setFilter] = useState<Filter | null>(null);
@@ -38,6 +44,7 @@ const FilterMenu = ({ onSelectStatus, onSelectPriority }: Props) => {
   const filterBys = [
     [SignalStrongIcon, Filter.PRIORITY, "Priority"],
     [TodoIcon, Filter.STATUS, "Status"],
+    [UserIcon, Filter.CREATOR, "Creator"],
   ];
 
   //
@@ -60,7 +67,6 @@ const FilterMenu = ({ onSelectStatus, onSelectPriority }: Props) => {
             </div>
           );
         });
-
       case Filter.STATUS:
         return statuses.map(([Icon, status, label], idx) => {
           return (
@@ -78,6 +84,16 @@ const FilterMenu = ({ onSelectStatus, onSelectPriority }: Props) => {
             </div>
           );
         });
+      case Filter.CREATOR:
+        return [
+          <CreatorInput
+            key="1"
+            setFilter={setFilter}
+            setFilterDropDownVisible={setFilterDropDownVisible}
+            onCreatorEntered={onCreatorEntered}
+          />,
+          <div key="2"></div>,
+        ];
       default:
         return filterBys.map(([Icon, filter, label], idx) => {
           return (
@@ -119,5 +135,38 @@ const FilterMenu = ({ onSelectStatus, onSelectPriority }: Props) => {
     </div>
   );
 };
+
+function CreatorInput({
+  setFilter,
+  setFilterDropDownVisible,
+  onCreatorEntered,
+}: {
+  setFilter: (p: null) => void;
+  setFilterDropDownVisible: (p: boolean) => void;
+  onCreatorEntered: (p: string) => void;
+}) {
+  const [creator, setCreator] = useState("");
+  function handleKeyPress(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      setFilter(null);
+      setFilterDropDownVisible(false);
+      onCreatorEntered(creator);
+    } else if (e.key === "Escape") {
+      setFilter(null);
+      setFilterDropDownVisible(false);
+    }
+  }
+  return (
+    <div className="flex items-center h-8 text-gray">
+      <input
+        className="box-border h-full w-full outline-none hover:outline-none focus:outline-none hover:text-gray-800 hover:bg-gray-300"
+        type="text"
+        value={creator}
+        onKeyPress={handleKeyPress}
+        onChange={(e) => setCreator(e.target.value)}
+      />
+    </div>
+  );
+}
 
 export default FilterMenu;
