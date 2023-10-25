@@ -196,11 +196,13 @@ function filteredIssuesView(
   order: Order,
   filter: (i: Issue) => boolean
 ) {
-  return source.stream
-    .filter(filter)
-    .materialize((l: Issue, r: Issue) =>
-      getOrderValue(order, l).localeCompare(getOrderValue(order, r))
-    );
+  return source.stream.filter(filter).materialize((l: Issue, r: Issue) => {
+    const comp = getOrderValue(order, l).localeCompare(getOrderValue(order, r));
+    if (comp === 0) {
+      return l.id.localeCompare(r.id);
+    }
+    return comp;
+  });
 }
 
 function onNewDiff(diff: Diff) {

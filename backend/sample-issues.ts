@@ -50,7 +50,7 @@ export async function getReactSampleData(): Promise<SampleData> {
 
   // Can use this to generate artifically larger datasets for stress testing.
   const multiplied: SampleData = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     multiplied.push(
       ...issues.map((issue) => ({
         ...issue,
