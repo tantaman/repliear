@@ -38,7 +38,15 @@ import {
   Materialite,
   PersistentTreeView,
 } from "@vlcn.io/materialite";
-import { getFilters } from "./filters";
+import {
+  getPriorities,
+  getPriorityFilter,
+  getStatuses,
+  getStatusFilter,
+  getViewFilter,
+  getViewStatuses,
+  hasNonViewFilters,
+} from "./filters";
 
 const materialite = new Materialite();
 
@@ -101,9 +109,13 @@ function issueCountView(
 function filteredIssuesView(
   source: IMemorableSource<Issue, Map<string, Issue>>,
   order: Order,
-  filter: (i: Issue) => boolean
+  filters: ((i: Issue) => boolean)[]
 ) {
-  return source.stream.filter(filter).materialize((l: Issue, r: Issue) => {
+  let { stream } = source;
+  for (const f of filters) {
+    stream = stream.filter(f);
+  }
+  return stream.materialize((l: Issue, r: Issue) => {
     const comp = getOrderValue(order, l).localeCompare(getOrderValue(order, r));
     if (comp === 0) {
       return l.id.localeCompare(r.id);
@@ -167,26 +179,29 @@ const App = ({ rep, undoManager }: AppProps) => {
 
   useEffect(() => {
     const start = performance.now();
-    const filters = getFilters(view, priorityFilter, statusFilter);
+    const viewStatuses = getViewStatuses(view);
+    const statuses = getStatuses(statusFilter);
+    const issueFilter = getStatusFilter(viewStatuses, statuses);
+    const viewFilter = getViewFilter(viewStatuses);
+
     const order = getIssueOrder(view, orderBy);
-    const filterView = filteredIssuesView(
-      allIssueSet,
-      order,
-      filters.issuesFilter
-    );
-    const countView = issueCountView(allIssueSet, filters.viewFilter);
+    const filterView = filteredIssuesView(allIssueSet, order, [
+      issueFilter,
+      getPriorityFilter(getPriorities(priorityFilter)),
+    ]);
+    const countView = issueCountView(allIssueSet, viewFilter);
     filterView.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
         filteredIssues: data,
-        hasNonViewFilters: filters.hasNonViewFilters,
+        hasNonViewFilters: hasNonViewFilters(viewStatuses, statuses),
       }));
     });
     countView.onChange((data) => {
       setIssueViews((last) => ({
         ...last,
         issueCount: data,
-        hasNonViewFilters: filters.hasNonViewFilters,
+        hasNonViewFilters: hasNonViewFilters(viewStatuses, statuses),
       }));
     });
     // TODO (mlaw): remove the need for this call.
