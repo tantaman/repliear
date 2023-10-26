@@ -22,6 +22,12 @@ interface FilterStatusProps {
   label: string;
 }
 
+type DateFilterStatusProps = {
+  filter: DateQueryArg[] | null;
+  onDelete: () => void;
+  label: string;
+};
+
 const displayStrings: Record<Priority | Status | string, string> = {
   [Priority.NONE]: "None",
   [Priority.LOW]: "Low",
@@ -55,6 +61,31 @@ const FilterStatus = ({ filter, onDelete, label }: FilterStatusProps) => {
     </div>
   );
 };
+
+function DateFilterStatus({ filter, onDelete, label }: DateFilterStatusProps) {
+  if (!filter || filter.length === 0) return null;
+  return (
+    <div className="flex items-center pr-4 space-x-[1px]">
+      <span className="px-1 text-gray-50 bg-gray-850 rounded-l">
+        {label} is
+      </span>
+      <span className="px-1 text-gray-50 bg-gray-850 ">
+        {filter
+          .map((f) => {
+            const [time, op] = f.split("|") as [string, Op];
+            return `${op} ${new Date(parseInt(time)).toLocaleDateString()}`;
+          })
+          .join(" AND ")}
+      </span>
+      <span
+        className="px-1 text-gray-50 bg-gray-850 rounded-r cursor-pointer"
+        onMouseDown={onDelete}
+      >
+        &times;
+      </span>
+    </div>
+  );
+}
 
 const TopFilter = ({
   title,
@@ -161,7 +192,9 @@ const TopFilter = ({
       </div>
       {(statusFilters && statusFilters.length) ||
       (priorityFilters && priorityFilters.length) ||
-      (creatorFilters && creatorFilters.length) ? (
+      (creatorFilters && creatorFilters.length) ||
+      (createdFilters && createdFilters.length) ||
+      (modifiedFilters && modifiedFilters.length) ? (
         <div className="flex pl-2 lg:pl-9 pr-6 border-b border-gray-850 h-8">
           <FilterStatus
             filter={statusFilters}
@@ -178,12 +211,12 @@ const TopFilter = ({
             onDelete={() => setCreatorFilterByParam(null)}
             label="Creator"
           />
-          <FilterStatus
+          <DateFilterStatus
             filter={createdFilters}
             onDelete={() => setCreatedFilterByParam(null)}
             label="Created"
           />
-          <FilterStatus
+          <DateFilterStatus
             filter={modifiedFilters}
             onDelete={() => setModifiedFilterByParam(null)}
             label="Modified"
