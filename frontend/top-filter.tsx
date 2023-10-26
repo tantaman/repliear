@@ -235,7 +235,9 @@ function createDateFilterHandler(
   // TODO: do not allow more than one op of same type.
   return async (date: Date) => {
     const set = new Set(filters);
-    const encoded: DateQueryArg = `${date.getTime()}|${op}`;
+    const encoded: DateQueryArg = `${
+      date.getTime() + date.getTimezoneOffset() * 60 * 1000
+    }|${op}`;
     if (set.has(encoded)) {
       set.delete(encoded);
     } else {
