@@ -16,12 +16,12 @@ interface Props {
 }
 
 interface FilterStatusProps {
-  filter: Status[] | Priority[] | null;
+  filter: Status[] | Priority[] | string[] | null;
   onDelete: () => void;
   label: string;
 }
 
-const displayStrings: Record<Priority | Status, string> = {
+const displayStrings: Record<Priority | Status | string, string> = {
   [Priority.NONE]: "None",
   [Priority.LOW]: "Low",
   [Priority.MEDIUM]: "Medium",
@@ -43,7 +43,7 @@ const FilterStatus = ({ filter, onDelete, label }: FilterStatusProps) => {
         {label} is
       </span>
       <span className="px-1 text-gray-50 bg-gray-850 ">
-        {filter.map((f) => displayStrings[f]).join(", ")}
+        {filter.map((f) => displayStrings[f] || f).join(", ")}
       </span>
       <span
         className="px-1 text-gray-50 bg-gray-850 rounded-r cursor-pointer"
@@ -152,7 +152,8 @@ const TopFilter = ({
         </div>
       </div>
       {(statusFilters && statusFilters.length) ||
-      (priorityFilters && priorityFilters.length) ? (
+      (priorityFilters && priorityFilters.length) ||
+      (creatorFilters && creatorFilters.length) ? (
         <div className="flex pl-2 lg:pl-9 pr-6 border-b border-gray-850 h-8">
           <FilterStatus
             filter={statusFilters}
@@ -163,6 +164,11 @@ const TopFilter = ({
             filter={priorityFilters}
             onDelete={() => setPriorityFilterByParam(null)}
             label="Priority"
+          />
+          <FilterStatus
+            filter={creatorFilters}
+            onDelete={() => setCreatorFilterByParam(null)}
+            label="Creator"
           />
         </div>
       ) : null}

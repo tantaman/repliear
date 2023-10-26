@@ -159,6 +159,7 @@ function CreatorInput({
   return (
     <div className="flex items-center h-8 text-gray">
       <input
+        autoFocus
         className="box-border h-full w-full outline-none hover:outline-none focus:outline-none hover:text-gray-800 hover:bg-gray-300"
         type="text"
         value={creator}

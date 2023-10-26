@@ -197,7 +197,6 @@ const App = ({ rep, undoManager }: AppProps) => {
       priorityFilterFn ||
       creatorFilterFn
     );
-    console.log("has non view filters", hasNonViewFilters);
 
     const order = getIssueOrder(view, orderBy);
     const filterView = filteredIssuesView(allIssueSet, order, [
