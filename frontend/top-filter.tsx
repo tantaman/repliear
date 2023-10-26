@@ -6,6 +6,7 @@ import { queryTypes, useQueryState } from "next-usequerystate";
 import FilterMenu from "./filter-menu";
 import { Order, Priority, Status } from "./issue";
 import { noop } from "lodash";
+import type { DateQueryArg, Op } from "./filters";
 
 interface Props {
   title: string;
@@ -84,6 +85,14 @@ const TopFilter = ({
     "creatorFilter",
     queryTypes.array<string>(queryTypes.string)
   );
+  const [createdFilters, setCreatedFilterByParam] = useQueryState(
+    "createdFilter",
+    queryTypes.array<DateQueryArg>(queryTypes.string as any)
+  );
+  const [modifiedFilters, setModifiedFilterByParam] = useQueryState(
+    "modifiedFilter",
+    queryTypes.array<DateQueryArg>(queryTypes.string as any)
+  );
 
   return (
     <>
@@ -105,39 +114,38 @@ const TopFilter = ({
             <span>{issuesCount}</span>
           )}
           <FilterMenu
-            onSelectPriority={async (priority) => {
-              const prioritySet = new Set(priorityFilters);
-              if (prioritySet.has(priority)) {
-                prioritySet.delete(priority);
-              } else {
-                prioritySet.add(priority);
-              }
-              await setPriorityFilterByParam(
-                prioritySet.size === 0 ? null : [...prioritySet]
-              );
-            }}
-            onSelectStatus={async (status) => {
-              const statusSet = new Set(statusFilters);
-              if (statusSet.has(status)) {
-                statusSet.delete(status);
-              } else {
-                statusSet.add(status);
-              }
-              await setStatusFilterByParam(
-                statusSet.size === 0 ? null : [...statusSet]
-              );
-            }}
-            onCreatorEntered={async (creator) => {
-              const creatorSet = new Set(creatorFilters);
-              if (creatorSet.has(creator)) {
-                creatorSet.delete(creator);
-              } else {
-                creatorSet.add(creator);
-              }
-              await setCreatorFilterByParam(
-                creatorSet.size === 0 ? null : [...creatorSet]
-              );
-            }}
+            onSelectPriority={createEnumSetFilterHandler(
+              priorityFilters,
+              setPriorityFilterByParam
+            )}
+            onSelectStatus={createEnumSetFilterHandler(
+              statusFilters,
+              setStatusFilterByParam
+            )}
+            onCreatorEntered={createEnumSetFilterHandler(
+              creatorFilters,
+              setCreatorFilterByParam
+            )}
+            onCreatedAfterEntered={createDateFilterHandler(
+              createdFilters,
+              setCreatedFilterByParam,
+              ">="
+            )}
+            onCreatedBeforeEntered={createDateFilterHandler(
+              createdFilters,
+              setCreatedFilterByParam,
+              "<="
+            )}
+            onModifiedAfterEntered={createDateFilterHandler(
+              modifiedFilters,
+              setModifiedFilterByParam,
+              ">="
+            )}
+            onModifiedBeforeEntered={createDateFilterHandler(
+              modifiedFilters,
+              setModifiedFilterByParam,
+              "<="
+            )}
           />
         </div>
 
@@ -170,10 +178,53 @@ const TopFilter = ({
             onDelete={() => setCreatorFilterByParam(null)}
             label="Creator"
           />
+          <FilterStatus
+            filter={createdFilters}
+            onDelete={() => setCreatedFilterByParam(null)}
+            label="Created"
+          />
+          <FilterStatus
+            filter={modifiedFilters}
+            onDelete={() => setModifiedFilterByParam(null)}
+            label="Modified"
+          />
         </div>
       ) : null}
     </>
   );
 };
+
+function createDateFilterHandler(
+  filters: DateQueryArg[] | null,
+  setFilters: (f: DateQueryArg[] | null) => Promise<unknown>,
+  op: Op
+) {
+  // TODO: do not allow more than one op of same type.
+  return async (date: Date) => {
+    const set = new Set(filters);
+    const encoded: DateQueryArg = `${date.getTime()}|${op}`;
+    if (set.has(encoded)) {
+      set.delete(encoded);
+    } else {
+      set.add(encoded);
+    }
+    await setFilters(set.size === 0 ? null : [...set]);
+  };
+}
+
+function createEnumSetFilterHandler<T>(
+  filters: T[] | null,
+  setFilters: (f: T[] | null) => Promise<unknown>
+) {
+  return async (e: T) => {
+    const set = new Set(filters);
+    if (set.has(e)) {
+      set.delete(e);
+    } else {
+      set.add(e);
+    }
+    await setFilters(set.size === 0 ? null : [...set]);
+  };
+}
 
 export default memo(TopFilter);

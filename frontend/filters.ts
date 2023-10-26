@@ -6,7 +6,8 @@ import {
   statusEnumSchema,
 } from "./issue";
 
-type Comparison = ">=" | "<=";
+export type Op = "<=" | ">=";
+export type DateQueryArg = `${number}|${Op}`;
 
 export function hasNonViewFilters(
   viewStatuses: Set<string>,
@@ -100,19 +101,43 @@ export function getViewFilter(
 }
 
 export function getModifiedFilter(
-  time: number,
-  op: Comparison
+  args: DateQueryArg[] | null
 ): (issue: Issue) => boolean {
-  return (issue) =>
-    op === "<=" ? issue.modified <= time : issue.modified >= time;
+  return createTimeFilter("modified", args);
 }
 
 export function getCreatedFilter(
-  time: number,
-  op: Comparison
+  args: DateQueryArg[] | null
 ): (issue: Issue) => boolean {
-  return (issue) =>
-    op === "<=" ? issue.created <= time : issue.created >= time;
+  return createTimeFilter("created", args);
+}
+
+function createTimeFilter(
+  property: "created" | "modified",
+  args: DateQueryArg[] | null
+): (issue: Issue) => boolean {
+  let before: number | null = null;
+  let after: number | null = null;
+  for (const arg of args || []) {
+    const [time, op] = arg.split("|") as [number, Op];
+    switch (op) {
+      case "<=":
+        before = before ? Math.min(before, time) : time;
+        break;
+      case ">=":
+        after = after ? Math.max(after, time) : time;
+        break;
+    }
+  }
+  return (issue) => {
+    if (before && issue[property] > before) {
+      return false;
+    }
+    if (after && issue[property] < after) {
+      return false;
+    }
+    return true;
+  };
 }
 
 export function getCreators(creatorFilter: string | null): Set<string> {

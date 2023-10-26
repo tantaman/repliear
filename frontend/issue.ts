@@ -78,6 +78,8 @@ export enum Filter {
   PRIORITY,
   STATUS,
   CREATOR,
+  CREATED,
+  MODIFIED,
 }
 
 const filterEnumSchema = z.nativeEnum(Filter);

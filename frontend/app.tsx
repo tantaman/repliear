@@ -40,8 +40,11 @@ import {
   PersistentTreeView,
 } from "@vlcn.io/materialite";
 import {
+  DateQueryArg,
+  getCreatedFilter,
   getCreatorFilter,
   getCreators,
+  getModifiedFilter,
   getPriorities,
   getPriorityFilter,
   getStatuses,
@@ -174,6 +177,14 @@ const App = ({ rep, undoManager }: AppProps) => {
   const [priorityFilter] = useQueryState("priorityFilter");
   const [statusFilter] = useQueryState("statusFilter");
   const [creatorFilter] = useQueryState("creatorFilter");
+  const [createdFilter] = useQueryState("createdFilter") as [
+    DateQueryArg[] | null,
+    unknown
+  ];
+  const [modifiedFilter] = useQueryState("modifiedFilter") as [
+    DateQueryArg[] | null,
+    unknown
+  ];
   const [orderBy] = useQueryState("orderBy");
   const [detailIssueID, setDetailIssueID] = useQueryState("iss");
   const [menuVisible, setMenuVisible] = useState(false);
@@ -190,20 +201,21 @@ const App = ({ rep, undoManager }: AppProps) => {
     const statuses = getStatuses(statusFilter);
     const statusFilterFn = getStatusFilter(viewStatuses, statuses);
     const viewFilterFn = getViewFilter(viewStatuses);
-    const priorityFilterFn = getPriorityFilter(getPriorities(priorityFilter));
-    const creatorFilterFn = getCreatorFilter(getCreators(creatorFilter));
+    const filterFns = [
+      statusFilterFn,
+      getPriorityFilter(getPriorities(priorityFilter)),
+      getCreatorFilter(getCreators(creatorFilter)),
+      getCreatedFilter(createdFilter),
+      getModifiedFilter(modifiedFilter),
+    ];
+
     const hasNonViewFilters = !!(
       doesHaveNonViewFilters(viewStatuses, statuses) ||
-      priorityFilterFn ||
-      creatorFilterFn
+      filterFns.filter((f) => f !== null && f !== statusFilterFn).length > 0
     );
 
     const order = getIssueOrder(view, orderBy);
-    const filterView = filteredIssuesView(allIssueSet, order, [
-      statusFilterFn,
-      priorityFilterFn,
-      creatorFilterFn,
-    ]);
+    const filterView = filteredIssuesView(allIssueSet, order, filterFns);
     const countView = issueCountView(allIssueSet, viewFilterFn);
     filterView.onChange((data) => {
       setIssueViews((last) => ({
@@ -229,7 +241,15 @@ const App = ({ rep, undoManager }: AppProps) => {
       // and operators should be ref counted and remove themselves once their consumers are gone.
       allIssueSet.detachPipelines();
     };
-  }, [priorityFilter, statusFilter, orderBy, view, creatorFilter]);
+  }, [
+    priorityFilter,
+    statusFilter,
+    orderBy,
+    view,
+    creatorFilter,
+    createdFilter,
+    modifiedFilter,
+  ]);
 
   const partialSync = useSubscribe<
     PartialSyncState | "NOT_RECEIVED_FROM_SERVER"

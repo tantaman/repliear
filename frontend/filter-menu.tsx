@@ -5,18 +5,30 @@ import { useClickOutside } from "./hooks/useClickOutside";
 import SignalStrongIcon from "./assets/icons/signal-strong.svg";
 import TodoIcon from "./assets/icons/circle.svg";
 import UserIcon from "./assets/icons/avatar.svg";
+import DateIcon from "./assets/icons/due-date.svg";
 import { statusOpts } from "./priority-menu";
 import { statuses } from "./status-menu";
+import useId from "@mui/utils/useId";
+
+type DateCallback = (date: Date) => void;
 interface Props {
   onSelectStatus: (filter: Status) => void;
   onSelectPriority: (filter: Priority) => void;
   onCreatorEntered: (creator: string) => void;
+  onCreatedAfterEntered: DateCallback;
+  onCreatedBeforeEntered: DateCallback;
+  onModifiedAfterEntered: DateCallback;
+  onModifiedBeforeEntered: DateCallback;
 }
 
 const FilterMenu = ({
   onSelectStatus,
   onSelectPriority,
   onCreatorEntered,
+  onCreatedAfterEntered,
+  onCreatedBeforeEntered,
+  onModifiedAfterEntered,
+  onModifiedBeforeEntered,
 }: Props) => {
   const [filterRef, setFilterRef] = useState<HTMLButtonElement | null>(null);
   const [popperRef, setPopperRef] = useState<HTMLDivElement | null>(null);
@@ -45,9 +57,10 @@ const FilterMenu = ({
     [SignalStrongIcon, Filter.PRIORITY, "Priority"],
     [TodoIcon, Filter.STATUS, "Status"],
     [UserIcon, Filter.CREATOR, "Creator"],
+    [DateIcon, Filter.CREATED, "Created"],
+    [DateIcon, Filter.MODIFIED, "Modified"],
   ];
 
-  //
   const options = (filter: Filter | null) => {
     switch (filter) {
       case Filter.PRIORITY:
@@ -93,6 +106,46 @@ const FilterMenu = ({
             onCreatorEntered={onCreatorEntered}
           />,
           <div key="2"></div>,
+        ];
+      case Filter.CREATED:
+        return [
+          <DateInput
+            key="1"
+            setFilter={setFilter}
+            setFilterDropDownVisible={setFilterDropDownVisible}
+            onDateEntered={onCreatedBeforeEntered}
+          >
+            Before
+          </DateInput>,
+          <DateInput
+            key="2"
+            setFilter={setFilter}
+            setFilterDropDownVisible={setFilterDropDownVisible}
+            onDateEntered={onCreatedAfterEntered}
+          >
+            After
+          </DateInput>,
+          <div key="3"></div>,
+        ];
+      case Filter.MODIFIED:
+        return [
+          <DateInput
+            key="1"
+            setFilter={setFilter}
+            setFilterDropDownVisible={setFilterDropDownVisible}
+            onDateEntered={onModifiedBeforeEntered}
+          >
+            Before
+          </DateInput>,
+          <DateInput
+            key="2"
+            setFilter={setFilter}
+            setFilterDropDownVisible={setFilterDropDownVisible}
+            onDateEntered={onModifiedAfterEntered}
+          >
+            After
+          </DateInput>,
+          <div key="3"></div>,
         ];
       default:
         return filterBys.map(([Icon, filter, label], idx) => {
@@ -165,6 +218,43 @@ function CreatorInput({
         value={creator}
         onKeyPress={handleKeyPress}
         onChange={(e) => setCreator(e.target.value)}
+      />
+    </div>
+  );
+}
+
+function DateInput({
+  setFilter,
+  setFilterDropDownVisible,
+  onDateEntered,
+  children,
+}: {
+  setFilter: (p: null) => void;
+  setFilterDropDownVisible: (p: boolean) => void;
+  onDateEntered: (p: Date) => void;
+  children: React.ReactNode;
+}) {
+  function onChange(e: React.ChangeEvent<HTMLDataElement>) {
+    onDateEntered(new Date(e.target.value));
+    setFilter(null);
+    setFilterDropDownVisible(false);
+  }
+  const id = useId() as string;
+  return (
+    <div className="flex items-center h-8 px-3 text-gray focus:outline-none hover:text-gray-800 hover:bg-gray-300">
+      <label htmlFor={id}>{children}</label>
+      <input
+        type="date"
+        id={id}
+        style={{
+          height: "100%",
+          border: 0,
+          background: "inherit",
+          outline: 0,
+          color: "transparent",
+        }}
+        onChange={onChange}
+        onFocus={(e) => e.target.showPicker()}
       />
     </div>
   );
