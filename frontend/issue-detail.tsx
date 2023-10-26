@@ -88,7 +88,9 @@ export default function IssueDetail({
 
   useEffect(() => {
     if (detailIssueID) {
-      const index = issues.findIndex((issue) => issue.id === detailIssueID);
+      const index = issues.findIndex(
+        (issue: Issue) => issue.id === detailIssueID
+      );
       setCurrentIssueIdx(index);
     }
   }, [issues, detailIssueID]);
