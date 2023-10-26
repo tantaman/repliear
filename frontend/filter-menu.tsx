@@ -57,8 +57,8 @@ const FilterMenu = ({
     [SignalStrongIcon, Filter.PRIORITY, "Priority"],
     [TodoIcon, Filter.STATUS, "Status"],
     [UserIcon, Filter.CREATOR, "Creator"],
-    [DateIcon, Filter.CREATED, "Created"],
     [DateIcon, Filter.MODIFIED, "Modified"],
+    [DateIcon, Filter.CREATED, "Created"],
   ];
 
   const options = (filter: Filter | null) => {

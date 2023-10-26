@@ -1,10 +1,4 @@
-import {
-  Priority,
-  Issue,
-  priorityEnumSchema,
-  Status,
-  statusEnumSchema,
-} from "./issue";
+import { Priority, Issue, Status } from "./issue";
 
 export type Op = "<=" | ">=";
 export type DateQueryArg = `${number}|${Op}`;
@@ -33,35 +27,14 @@ export function getViewStatuses(view: string | null): Set<Status> {
   }
 }
 
-export function getStatuses(statusFilter: string | null): Set<Status> {
-  const statuses = new Set<Status>();
-  if (!statusFilter) {
-    return statuses;
-  }
-
-  for (const s of statusFilter.split(",")) {
-    const parseResult = statusEnumSchema.safeParse(s);
-    if (parseResult.success) {
-      statuses.add(parseResult.data);
-    }
-  }
-
-  return statuses;
+export function getStatuses(statusFilter: Status[] | null): Set<Status> {
+  return new Set(statusFilter ? statusFilter : []);
 }
 
-export function getPriorities(priorityFilter: string | null): Set<Priority> {
-  const priorities = new Set<Priority>();
-  if (!priorityFilter) {
-    return priorities;
-  }
-  for (const p of priorityFilter.split(",")) {
-    const parseResult = priorityEnumSchema.safeParse(p);
-    if (parseResult.success) {
-      priorities.add(parseResult.data);
-    }
-  }
-
-  return priorities;
+export function getPriorities(
+  priorityFilter: Priority[] | null
+): Set<Priority> {
+  return new Set(priorityFilter ? priorityFilter : []);
 }
 
 export function getPriorityFilter(
@@ -119,7 +92,8 @@ function createTimeFilter(
   let before: number | null = null;
   let after: number | null = null;
   for (const arg of args || []) {
-    const [time, op] = arg.split("|") as [number, Op];
+    const [timePart, op] = arg.split("|") as [string, Op];
+    const time = parseInt(timePart);
     switch (op) {
       case "<=":
         before = before ? Math.min(before, time) : time;
@@ -140,17 +114,8 @@ function createTimeFilter(
   };
 }
 
-export function getCreators(creatorFilter: string | null): Set<string> {
-  const creators = new Set<string>();
-  if (!creatorFilter) {
-    return creators;
-  }
-
-  for (const c of creatorFilter.split(",")) {
-    creators.add(c.toLowerCase());
-  }
-
-  return creators;
+export function getCreators(creatorFilter: string[] | null): Set<string> {
+  return new Set(creatorFilter ? creatorFilter : []);
 }
 
 export function getTitleFilter(title: string): (issue: Issue) => boolean {

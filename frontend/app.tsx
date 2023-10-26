@@ -19,11 +19,13 @@ import {
   statusOrderValues,
   priorityOrderValues,
   IssueUpdateWithID,
+  Priority,
+  Status,
 } from "./issue";
 import { useState } from "react";
 import TopFilter from "./top-filter";
 import IssueList from "./issue-list";
-import { useQueryState } from "next-usequerystate";
+import { queryTypes, useQueryState } from "next-usequerystate";
 import IssueBoard from "./issue-board";
 import { minBy, pickBy } from "lodash";
 import IssueDetail from "./issue-detail";
@@ -174,17 +176,30 @@ type IssueViews = {
 };
 const App = ({ rep, undoManager }: AppProps) => {
   const [view] = useQueryState("view");
-  const [priorityFilter] = useQueryState("priorityFilter");
-  const [statusFilter] = useQueryState("statusFilter");
-  const [creatorFilter] = useQueryState("creatorFilter");
-  const [createdFilter] = useQueryState("createdFilter") as [
-    DateQueryArg[] | null,
-    unknown
-  ];
-  const [modifiedFilter] = useQueryState("modifiedFilter") as [
-    DateQueryArg[] | null,
-    unknown
-  ];
+  const [priorityFilter] = useQueryState(
+    "priorityFilter",
+    queryTypes.array<Priority>(
+      queryTypes.stringEnum<Priority>(Object.values(Priority))
+    )
+  );
+  const [statusFilter] = useQueryState(
+    "statusFilter",
+    queryTypes.array<Status>(
+      queryTypes.stringEnum<Status>(Object.values(Status))
+    )
+  );
+  const [creatorFilter] = useQueryState(
+    "creatorFilter",
+    queryTypes.array<string>(queryTypes.string)
+  );
+  const [createdFilter] = useQueryState(
+    "createdFilter",
+    queryTypes.array<DateQueryArg>(queryTypes.string as any)
+  );
+  const [modifiedFilter] = useQueryState(
+    "modifiedFilter",
+    queryTypes.array<DateQueryArg>(queryTypes.string as any)
+  );
   const [orderBy] = useQueryState("orderBy");
   const [detailIssueID, setDetailIssueID] = useQueryState("iss");
   const [menuVisible, setMenuVisible] = useState(false);
