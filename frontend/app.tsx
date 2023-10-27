@@ -251,10 +251,8 @@ const App = ({ rep, undoManager }: AppProps) => {
         hasNonViewFilters,
       }));
     });
-    // TODO (mlaw): remove the need for this call.
-    // The framework knows when new views are attached and when this is needed.
-    allIssueSet.recomputeAll();
 
+    filterView.pull();
     const end = performance.now();
     console.log(`Filter update duration: ${end - start}ms`);
     return () => {

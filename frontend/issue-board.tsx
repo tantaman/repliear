@@ -93,6 +93,7 @@ function IssueBoard({ issues, onUpdateIssues, onOpenDetail }: Props) {
   );
 
   useEffect(() => {
+    console.log(`RUNNING EFFECT!`);
     const views: PersistentTreeView<Issue>[] = [];
     for (const status of statuses) {
       // TODO (mlaw): add a `split` operator to materialite.
@@ -102,14 +103,16 @@ function IssueBoard({ issues, onUpdateIssues, onOpenDetail }: Props) {
         .materialize(kanbanComparator);
       views.push(view);
       view.onChange((data) => {
-        console.log("RECEIVED CHANGE " + data.size);
+        console.log(`SETTING ISSUES BY TYPE`);
         setIssuesByType((issuesByType) => ({
           ...issuesByType,
           [status]: data,
         }));
       });
     }
+    views[0].pull();
     return () => {
+      console.log(`PRUNING VIEWS!`);
       views.forEach((v) => v.destroy());
     };
   }, [issues]);

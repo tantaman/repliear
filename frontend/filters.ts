@@ -75,20 +75,23 @@ export function getViewFilter(
 
 export function getModifiedFilter(
   args: DateQueryArg[] | null
-): (issue: Issue) => boolean {
+): null | ((issue: Issue) => boolean) {
   return createTimeFilter("modified", args);
 }
 
 export function getCreatedFilter(
   args: DateQueryArg[] | null
-): (issue: Issue) => boolean {
+): null | ((issue: Issue) => boolean) {
   return createTimeFilter("created", args);
 }
 
 function createTimeFilter(
   property: "created" | "modified",
   args: DateQueryArg[] | null
-): (issue: Issue) => boolean {
+): null | ((issue: Issue) => boolean) {
+  if (!args || args.length === 0) {
+    return null;
+  }
   let before: number | null = null;
   let after: number | null = null;
   for (const arg of args || []) {
