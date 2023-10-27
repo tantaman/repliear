@@ -256,9 +256,9 @@ const App = ({ rep, undoManager }: AppProps) => {
     const end = performance.now();
     console.log(`Filter update duration: ${end - start}ms`);
     return () => {
-      // Detaching at the source isn't really composable. Views should be destroyed
-      // and operators should be ref counted and remove themselves once their consumers are gone.
-      allIssueSet.detachPipelines();
+      // Note: it might be useful for materialite to weakly hold views and clean up the pipeline on GC of the view
+      filterView.destroy();
+      countView.destroy();
     };
   }, [
     priorityFilter,
