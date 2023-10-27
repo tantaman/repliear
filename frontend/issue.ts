@@ -46,6 +46,14 @@ export enum Status {
   DONE = "DONE",
   CANCELED = "CANCELED",
 }
+export const statuses = [
+  "BACKLOG",
+  "TODO",
+  "IN_PROGRESS",
+  "DONE",
+  "CANCELED",
+] as const;
+export type StatusUnion = typeof statuses[number];
 
 export const statusOrderValues: Record<Status, string> = {
   // eslint-disable-next-line @typescript-eslint/naming-convention

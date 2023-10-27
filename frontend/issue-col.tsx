@@ -11,11 +11,12 @@ import type { Issue, Priority, Status } from "./issue";
 import IssueItem from "./issue-item";
 import { FixedSizeList } from "react-window";
 import AutoSizer from "react-virtualized-auto-sizer";
+import type { PersistentTreeView } from "@vlcn.io/materialite";
 
 interface Props {
   status: Status;
   title: string;
-  issues: Array<Issue>;
+  issues: PersistentTreeView<Issue>["data"];
   onChangePriority: (issue: Issue, priority: Priority) => void;
   onOpenDetail: (issue: Issue) => void;
 }
@@ -23,7 +24,7 @@ interface Props {
 interface RowProps {
   index: number;
   data: {
-    issues: Array<Issue>;
+    issues: PersistentTreeView<Issue>["data"];
     onChangePriority: (issue: Issue, priority: Priority) => void;
     onOpenDetail: (issue: Issue) => void;
   };
@@ -31,7 +32,7 @@ interface RowProps {
 }
 
 const RowPreMemo = ({ data, index, style }: RowProps) => {
-  const issue = data.issues[index];
+  const issue = data.issues.at(index);
   // We are rendering an extra item for the placeholder.
   // To do this we increased our data set size to include one 'fake' item.
   if (!issue) {
@@ -49,6 +50,7 @@ const RowPreMemo = ({ data, index, style }: RowProps) => {
             style={{
               ...provided.draggableProps.style,
               ...style,
+              height: style.height || 0,
             }}
             ref={provided.innerRef}
           >
@@ -89,7 +91,7 @@ function IssueCol({
         {statusIcon}
         <div className="ml-3 mr-3 font-medium">{title}</div>
         <div className="mr-3 font-normal text-gray-400">
-          {issues?.length || 0}
+          {issues?.size || 0}
         </div>
       </div>
 
@@ -101,7 +103,7 @@ function IssueCol({
           type="category"
           mode="virtual"
           renderClone={(provided, _snapshot, rubric) => {
-            const issue = issues[rubric.source.index];
+            const issue = issues.at(rubric.source.index);
             return (
               // @ts-expect-error @types/react@17 are wrong but react 18 does not work with nextjs
               <div
@@ -119,17 +121,17 @@ function IssueCol({
             // Usually the DroppableProvided.placeholder does this, but that won't
             // work in a virtual list
             const itemCount = snapshot.isUsingPlaceholder
-              ? issues.length + 1
-              : issues.length;
+              ? issues.size + 1
+              : issues.size;
             return (
               <AutoSizer>
                 {({ height, width }) => {
                   return (
                     <FixedSizeList
-                      height={height}
+                      height={height || 0}
                       itemCount={itemCount}
                       itemSize={100}
-                      width={width}
+                      width={width || 0}
                       outerRef={provided.innerRef}
                       itemData={itemData}
                     >

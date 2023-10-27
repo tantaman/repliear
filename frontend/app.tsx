@@ -37,7 +37,6 @@ import type { UndoManager } from "@rocicorp/undo";
 import { HotKeys } from "react-hotkeys";
 import {
   IMemorableSource,
-  DifferenceStream,
   Materialite,
   PersistentTreap,
   PersistentTreeView,
@@ -119,7 +118,7 @@ function filteredIssuesView(
   source: IMemorableSource<Issue, Map<string, Issue>>,
   order: Order,
   filters: (((i: Issue) => boolean) | null)[]
-) {
+): PersistentTreeView<Issue> {
   let { stream } = source;
   for (const f of filters) {
     if (!f) {
@@ -207,12 +206,13 @@ const App = ({ rep, undoManager }: AppProps) => {
 
   const [issueViews, setIssueViews] = useState<IssueViews>({
     issueCount: 0,
-    filteredIssues: new PersistentTreap(),
+    filteredIssues: PersistentTreap.empty(),
     hasNonViewFilters: false,
   });
-  const [filteredIssueStream, setFilteredIssueStream] = useState<
-    DifferenceStream<Issue>
-  >(allIssueSet.stream);
+  const [
+    issuesView,
+    setIssuesView,
+  ] = useState<PersistentTreeView<Issue> | null>(null);
 
   useEffect(() => {
     const start = performance.now();
@@ -235,6 +235,7 @@ const App = ({ rep, undoManager }: AppProps) => {
 
     const order = getIssueOrder(view, orderBy);
     const filterView = filteredIssuesView(allIssueSet, order, filterFns);
+    setIssuesView(filterView);
     const countView = issueCountView(allIssueSet, viewFilterFn);
     filterView.onChange((data) => {
       setIssueViews((last) => ({
@@ -253,6 +254,7 @@ const App = ({ rep, undoManager }: AppProps) => {
     // TODO (mlaw): remove the need for this call.
     // The framework knows when new views are attached and when this is needed.
     allIssueSet.recomputeAll();
+
     const end = performance.now();
     console.log(`Filter update duration: ${end - start}ms`);
     return () => {
@@ -403,7 +405,7 @@ const App = ({ rep, undoManager }: AppProps) => {
         detailIssueID={detailIssueID}
         isLoading={!partialSyncComplete}
         state={issueViews}
-        issueStream={filteredIssueStream}
+        issuesView={issuesView}
         rep={rep}
         onCloseMenu={handleCloseMenu}
         onToggleMenu={handleToggleMenu}
@@ -427,7 +429,7 @@ interface LayoutProps {
   detailIssueID: string | null;
   isLoading: boolean;
   state: IssueViews;
-  issueStream: DifferenceStream<Issue>;
+  issuesView: PersistentTreeView<Issue> | null;
   rep: Replicache<M>;
   onCloseMenu: () => void;
   onToggleMenu: () => void;
@@ -446,7 +448,7 @@ const RawLayout = ({
   detailIssueID,
   isLoading,
   state,
-  issueStream,
+  issuesView,
   rep,
   onCloseMenu,
   onToggleMenu,
@@ -496,9 +498,9 @@ const RawLayout = ({
                 "pointer-events-none": detailIssueID,
               })}
             >
-              {view === "board" ? (
+              {view === "board" && issuesView ? (
                 <IssueBoard
-                  issueStream={issueStream}
+                  issues={issuesView}
                   onUpdateIssues={onUpdateIssues}
                   onOpenDetail={onOpenDetail}
                 />

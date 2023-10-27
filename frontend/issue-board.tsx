@@ -1,42 +1,52 @@
-import type { DifferenceStream } from "@vlcn.io/materialite";
+import { PersistentTreap, PersistentTreeView } from "@vlcn.io/materialite";
 import { generateNKeysBetween } from "fractional-indexing";
-import { groupBy, indexOf } from "lodash";
-import React, { memo, useCallback, useEffect } from "react";
+import React, { memo, useCallback, useEffect, useState } from "react";
 import { DragDropContext, DropResult } from "react-beautiful-dnd";
 
-import { Status, Issue, IssueUpdate, Priority } from "./issue";
+import {
+  Status,
+  Issue,
+  IssueUpdate,
+  Priority,
+  StatusUnion,
+  statuses,
+} from "./issue";
 import IssueCol from "./issue-col";
 
-export type IssuesByStatusType = {
-  [Status.BACKLOG]: Issue[];
-  [Status.TODO]: Issue[];
-  [Status.IN_PROGRESS]: Issue[];
-  [Status.DONE]: Issue[];
-  [Status.CANCELED]: Issue[];
+export type IssuesByStatusType = Record<
+  StatusUnion,
+  PersistentTreeView<Issue>["data"]
+>;
+
+const defaultIssuesByType = {
+  [Status.BACKLOG]: PersistentTreap.empty(),
+  [Status.TODO]: PersistentTreap.empty(),
+  [Status.IN_PROGRESS]: PersistentTreap.empty(),
+  [Status.DONE]: PersistentTreap.empty(),
+  [Status.CANCELED]: PersistentTreap.empty(),
 };
 
-export const getIssueByType = (allIssues: Issue[]): IssuesByStatusType => {
-  const issuesBySType = groupBy(allIssues, "status");
-  const defaultIssueByType = {
-    [Status.BACKLOG]: [],
-    [Status.TODO]: [],
-    [Status.IN_PROGRESS]: [],
-    [Status.DONE]: [],
-    [Status.CANCELED]: [],
-  };
-  const result = { ...defaultIssueByType, ...issuesBySType };
-  return result;
+const kanbanComparator = (l: Issue, r: Issue) => {
+  const comp =
+    l.kanbanOrder < r.kanbanOrder ? -1 : l.kanbanOrder > r.kanbanOrder ? 1 : 0;
+  if (comp === 0) {
+    return l.id.localeCompare(r.id);
+  }
+  return comp;
 };
 
 export function getKanbanOrderIssueUpdates(
   issueToMove: Issue,
   issueToInsertBefore: Issue,
-  issues: Issue[]
+  issues: PersistentTreeView<Issue>["data"]
 ): IssueUpdate[] {
-  const indexInKanbanOrder = indexOf(issues, issueToInsertBefore);
+  const indexInKanbanOrder = issues.findIndex(
+    (issue: Issue) => issue.id === issueToInsertBefore.id
+  );
+
   let beforeKey: string | null = null;
   if (indexInKanbanOrder > 0) {
-    beforeKey = issues[indexInKanbanOrder - 1].kanbanOrder;
+    beforeKey = issues.at(indexInKanbanOrder - 1).kanbanOrder;
   }
   let afterKey: string | null = null;
   const issuesToReKey: Issue[] = [];
@@ -44,11 +54,11 @@ export function getKanbanOrderIssueUpdates(
   // have identical kanbanOrder values, we need to fix up the
   // collision by re-keying the issues.
   for (let i = indexInKanbanOrder; i < issues.length; i++) {
-    if (issues[i].kanbanOrder !== beforeKey) {
-      afterKey = issues[i].kanbanOrder;
+    if (issues.at(i).kanbanOrder !== beforeKey) {
+      afterKey = issues.at(i).kanbanOrder;
       break;
     }
-    issuesToReKey.push(issues[i]);
+    issuesToReKey.push(issues.at(i));
   }
   const newKanbanOrderKeys = generateNKeysBetween(
     beforeKey,
@@ -72,16 +82,37 @@ export function getKanbanOrderIssueUpdates(
 }
 
 interface Props {
-  issueStream: DifferenceStream<Issue>;
+  issues: PersistentTreeView<Issue>;
   onUpdateIssues: (issueUpdates: IssueUpdate[]) => void;
   onOpenDetail: (issue: Issue) => void;
 }
 
-function IssueBoard({ issueStream, onUpdateIssues, onOpenDetail }: Props) {
-  const issuesByType = getIssueByType(issues); // TODO (mlaw): incrementalize
+function IssueBoard({ issues, onUpdateIssues, onOpenDetail }: Props) {
+  const [issuesByType, setIssuesByType] = useState<IssuesByStatusType>(
+    defaultIssuesByType
+  );
+
   useEffect(() => {
-    return () => {};
-  }, [issueStream]);
+    const views: PersistentTreeView<Issue>[] = [];
+    for (const status of statuses) {
+      // TODO (mlaw): add a `split` operator to materialite.
+      // The idea there would be to split a stream by key into many streams.
+      const view = issues.stream
+        .filter((issue) => issue.status === status)
+        .materialize(kanbanComparator);
+      views.push(view);
+      view.onChange((data) => {
+        console.log("RECEIVED CHANGE " + data.size);
+        setIssuesByType((issuesByType) => ({
+          ...issuesByType,
+          [status]: data,
+        }));
+      });
+    }
+    return () => {
+      views.forEach((v) => v.destroy());
+    };
+  }, [issues]);
 
   const handleDragEnd = useCallback(
     ({ source, destination }: DropResult) => {
@@ -103,7 +134,11 @@ function IssueBoard({ issueStream, onUpdateIssues, onOpenDetail }: Props) {
         return;
       }
       const issueUpdates = issueToInsertBefore
-        ? getKanbanOrderIssueUpdates(draggedIssue, issueToInsertBefore, issues)
+        ? getKanbanOrderIssueUpdates(
+            draggedIssue,
+            issueToInsertBefore,
+            issuesByType[newStatus]
+          )
         : [{ issue: draggedIssue, issueChanges: {} }];
       if (newStatus !== sourceStatus) {
         issueUpdates[0] = {
@@ -116,7 +151,7 @@ function IssueBoard({ issueStream, onUpdateIssues, onOpenDetail }: Props) {
       }
       onUpdateIssues(issueUpdates);
     },
-    [issues, issuesByType, onUpdateIssues]
+    [issuesByType, onUpdateIssues]
   );
 
   const handleChangePriority = useCallback(
@@ -130,6 +165,13 @@ function IssueBoard({ issueStream, onUpdateIssues, onOpenDetail }: Props) {
     },
     [onUpdateIssues]
   );
+
+  console.log(issuesByType);
+  console.log("BACKLOG " + issuesByType[Status.BACKLOG].size);
+  console.log("CANCELED " + issuesByType[Status.CANCELED].size);
+  console.log("IN_PROGRESS " + issuesByType[Status.IN_PROGRESS].size);
+  console.log("DONE " + issuesByType[Status.DONE].size);
+  console.log("TODO " + issuesByType[Status.TODO].size);
 
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
