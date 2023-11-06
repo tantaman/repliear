@@ -56,6 +56,11 @@ import {
   hasNonViewFilters as doesHaveNonViewFilters,
 } from "./filters";
 
+type AppProps = {
+  rep: Replicache<M>;
+  undoManager: UndoManager;
+};
+
 const materialite = new Materialite();
 
 function getIssueOrder(view: string | null, orderBy: string | null): Order {
@@ -120,11 +125,11 @@ function filteredIssuesView(
   filters: (((i: Issue) => boolean) | null)[]
 ): PersistentTreeView<Issue> {
   let { stream } = source;
-  for (const f of filters) {
-    if (!f) {
+  for (const filter of filters) {
+    if (!filter) {
       continue;
     }
-    stream = stream.filter(f);
+    stream = stream.filter(filter);
   }
   return stream.materialize((l: Issue, r: Issue) => {
     const comp = getOrderValue(order, l).localeCompare(getOrderValue(order, r));
@@ -159,11 +164,6 @@ function onNewDiff(diff: Diff) {
   const duration = performance.now() - start;
   console.log(`Diff duration: ${duration}ms`);
 }
-
-type AppProps = {
-  rep: Replicache<M>;
-  undoManager: UndoManager;
-};
 
 const allIssueSet = materialite.newMutableMap<string, Issue>(
   (issue) => issue.id
