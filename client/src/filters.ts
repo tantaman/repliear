@@ -51,11 +51,11 @@ export class Filters {
     }
   }
 
-  viewFilter(issue: Issue): boolean {
+  viewFilter = (issue: Issue): boolean => {
     return this._viewStatuses ? this._viewStatuses.has(issue.status) : true;
-  }
+  };
 
-  issuesFilter(issue: Issue): boolean {
+  issuesFilter = (issue: Issue): boolean => {
     if (this._issuesStatuses) {
       if (!this._issuesStatuses.has(issue.status)) {
         return false;
@@ -67,7 +67,7 @@ export class Filters {
       }
     }
     return true;
-  }
+  };
 
   equals(other: Filters): boolean {
     return (

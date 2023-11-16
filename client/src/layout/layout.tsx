@@ -6,7 +6,7 @@ import IssueBoard from '../issue/issue-board';
 import IssueDetail from '../issue/issue-detail';
 import IssueList from '../issue/issue-list';
 import {M} from '../model/mutators';
-import {State} from '../reducer';
+import {IssueViews} from '../reducer';
 import LeftMenu from './left-menu';
 import TopFilter from './top-filter';
 
@@ -28,7 +28,7 @@ export interface LayoutProps {
   view: string | null;
   detailIssueID: string | null;
   isLoading: boolean;
-  state: State;
+  state: IssueViews;
   rep: Replicache<M>;
   onCloseMenu: () => void;
   onToggleMenu: () => void;
@@ -73,11 +73,9 @@ const RawLayout = ({
               onToggleMenu={onToggleMenu}
               title={getTitle(view)}
               filteredIssuesCount={
-                state.filters.hasNonViewFilters
-                  ? state.filteredIssues.length
-                  : undefined
+                state.hasNonViewFilters ? state.filteredIssues.size : undefined
               }
-              issuesCount={state.viewIssueCount}
+              issuesCount={state.issueCount}
               showSortOrderMenu={view !== 'board'}
             />
           </div>

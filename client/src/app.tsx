@@ -1,5 +1,9 @@
-import {useCallback, useEffect, useReducer} from 'react';
-import type {ReadTransaction, Replicache} from 'replicache';
+import {useCallback, useEffect} from 'react';
+import type {
+  ReadTransaction,
+  Replicache,
+  ExperimentalDiff as Diff,
+} from 'replicache';
 import type {M} from './model/mutators';
 import {useState} from 'react';
 import {minBy, pickBy} from 'lodash';
@@ -22,17 +26,76 @@ import {
   IssueUpdate,
   IssueUpdateWithID,
   ISSUE_KEY_PREFIX,
+  Order,
   PartialSyncState,
 } from 'shared';
 import {getFilters, getIssueOrder} from './filters';
 import {Layout} from './layout/layout';
-import {timedReducer} from './reducer';
 import {useExclusiveEffect} from './util/useLock';
+import {Materialite} from '@vlcn.io/materialite';
+import {issueFromKeyAndValue} from './issue/issue';
+import {getOrderValue, IssueViews} from './reducer';
+import {IStatefulSource} from '@vlcn.io/materialite/dist/sources/Source';
+import {MutableSetSource} from '@vlcn.io/materialite/dist/sources/MutableSetSource';
 
 type AppProps = {
   rep: Replicache<M>;
   undoManager: UndoManager;
 };
+
+const materialite = new Materialite();
+// TODO: `allIssueSet` should be constructed based on selected sort
+// value. So allIssueSet needs to be computed on render or some such.
+// based on change in order by
+const allIssueSet = materialite.newSortedSet<Issue>((l: Issue, r: Issue) =>
+  l.id.localeCompare(r.id),
+);
+
+function onNewDiff(diff: Diff) {
+  if (diff.length === 0) {
+    return;
+  }
+
+  const start = performance.now();
+  materialite.tx(() => {
+    for (const diffOp of diff) {
+      if ('oldValue' in diffOp) {
+        allIssueSet.delete(
+          issueFromKeyAndValue(diffOp.key as string, diffOp.oldValue),
+        );
+      }
+      if ('newValue' in diffOp) {
+        allIssueSet.add(
+          issueFromKeyAndValue(diffOp.key as string, diffOp.newValue),
+        );
+      }
+    }
+  });
+
+  const duration = performance.now() - start;
+  console.log(`Diff duration: ${duration}ms`);
+}
+
+function filteredIssuesView(
+  source: IStatefulSource<Issue, MutableSetSource<Issue>['value']>,
+  order: Order,
+  filter: (i: Issue) => boolean,
+) {
+  return source.stream.filter(filter).materialize((l: Issue, r: Issue) => {
+    const comp = getOrderValue(order, l).localeCompare(getOrderValue(order, r));
+    if (comp === 0) {
+      return l.id.localeCompare(r.id);
+    }
+    return comp;
+  });
+}
+
+function issueCountView(
+  source: IStatefulSource<Issue, MutableSetSource<Issue>['value']>,
+  filter: (i: Issue) => boolean,
+) {
+  return source.stream.filter(filter).size().materializeValue(0);
+}
 
 const App = ({rep, undoManager}: AppProps) => {
   const [view] = useViewState();
@@ -42,13 +105,52 @@ const App = ({rep, undoManager}: AppProps) => {
   const [detailIssueID, setDetailIssueID] = useIssueDetailState();
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const [state, dispatch] = useReducer(timedReducer, {
-    allIssuesMap: new Map(),
-    viewIssueCount: 0,
-    filteredIssues: [],
-    filters: getFilters(view, priorityFilter, statusFilter),
-    issueOrder: getIssueOrder(view, orderBy),
+  const [issueViews, setIssueViews] = useState<IssueViews>({
+    issueCount: 0,
+    filteredIssues: allIssueSet.value,
+    hasNonViewFilters: false,
   });
+
+  // TODO (mlaw): use the new materialite react hooks
+  useEffect(() => {
+    const start = performance.now();
+    const filters = getFilters(view, priorityFilter, statusFilter);
+    console.log(filters);
+    const order = getIssueOrder(view, orderBy);
+    const filterView = filteredIssuesView(
+      allIssueSet,
+      order,
+      filters.issuesFilter,
+    );
+    const countView = issueCountView(allIssueSet, filters.viewFilter);
+    filterView.on(data => {
+      setIssueViews(last => ({
+        ...last,
+        filteredIssues: data,
+        hasNonViewFilters: filters.hasNonViewFilters,
+      }));
+    });
+    countView.on(data => {
+      setIssueViews(last => ({
+        ...last,
+        issueCount: data,
+        hasNonViewFilters: filters.hasNonViewFilters,
+      }));
+    });
+
+    setIssueViews(last => ({
+      ...last,
+      issueCount: countView.value,
+      filteredIssues: filterView.value,
+    }));
+
+    const end = performance.now();
+    console.log(`Filter update duration: ${end - start}ms`);
+    return () => {
+      allIssueSet.detachPipelines();
+    };
+    // stringify the filters to we don't re-run the effect on equal filters.
+  }, [priorityFilter?.toString(), statusFilter?.toString(), orderBy, view]);
 
   const partialSync = useSubscribe<
     PartialSyncState | 'NOT_RECEIVED_FROM_SERVER'
@@ -81,35 +183,17 @@ const App = ({rep, undoManager}: AppProps) => {
   }, []);
 
   useEffect(() => {
-    return rep.experimentalWatch(
-      diff => {
-        dispatch({
-          type: 'diff',
-          diff,
-        });
-      },
-      {prefix: ISSUE_KEY_PREFIX, initialValuesInFirstDiff: true},
-    );
+    return rep.experimentalWatch(onNewDiff, {
+      prefix: ISSUE_KEY_PREFIX,
+      initialValuesInFirstDiff: true,
+    });
   }, [rep]);
-
-  useEffect(() => {
-    dispatch({
-      type: 'setFilters',
-      filters: getFilters(view, priorityFilter, statusFilter),
-    });
-  }, [view, priorityFilter?.join(), statusFilter?.join()]);
-
-  useEffect(() => {
-    dispatch({
-      type: 'setIssueOrder',
-      issueOrder: getIssueOrder(view, orderBy),
-    });
-  }, [view, orderBy]);
 
   const handleCreateIssue = useCallback(
     async (issue: Omit<Issue, 'kanbanOrder'>, description: Description) => {
-      const minKanbanOrderIssue = minBy(
-        [...state.allIssuesMap.values()],
+      const minKanbanOrderIssue = minBy<Issue>(
+        [], // TODO
+        // [...state.allIssuesMap.values()],
         issue => issue.kanbanOrder,
       );
       const minKanbanOrder = minKanbanOrderIssue
@@ -124,7 +208,7 @@ const App = ({rep, undoManager}: AppProps) => {
         description,
       });
     },
-    [rep.mutate, state.allIssuesMap],
+    [rep.mutate /*state.allIssuesMap*/],
   );
   const handleCreateComment = useCallback(
     async (comment: Comment) => {
@@ -212,7 +296,7 @@ const App = ({rep, undoManager}: AppProps) => {
         view={view}
         detailIssueID={detailIssueID}
         isLoading={!partialSyncComplete}
-        state={state}
+        state={issueViews}
         rep={rep}
         onCloseMenu={handleCloseMenu}
         onToggleMenu={handleToggleMenu}

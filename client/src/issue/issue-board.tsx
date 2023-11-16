@@ -78,7 +78,7 @@ interface Props {
 
 function IssueBoard({issues, onUpdateIssues, onOpenDetail}: Props) {
   const start = performance.now();
-  const issuesByType = getIssueByType(issues);
+  const issuesByType = getIssueByType(issues); // TODO (mlaw): incrementalize
   console.log(`Issues by type duration: ${performance.now() - start}ms`);
 
   const handleDragEnd = useCallback(
