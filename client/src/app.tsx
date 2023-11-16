@@ -29,7 +29,7 @@ import {
   Order,
   PartialSyncState,
 } from 'shared';
-import {getFilters, getIssueOrder} from './filters';
+import {getFilters} from './filters';
 import {Layout} from './layout/layout';
 import {useExclusiveEffect} from './util/useLock';
 import {Materialite} from '@vlcn.io/materialite';
@@ -37,6 +37,7 @@ import {issueFromKeyAndValue} from './issue/issue';
 import {getOrderValue, IssueViews} from './reducer';
 import {IStatefulSource} from '@vlcn.io/materialite/dist/sources/Source';
 import {MutableSetSource} from '@vlcn.io/materialite/dist/sources/MutableSetSource';
+import {useSignal} from '@vlcn.io/materialite-react';
 
 type AppProps = {
   rep: Replicache<M>;
@@ -44,50 +45,23 @@ type AppProps = {
 };
 
 const materialite = new Materialite();
-// TODO: `allIssueSet` should be constructed based on selected sort
-// value. So allIssueSet needs to be computed on render or some such.
-// based on change in order by
-const allIssueSet = materialite.newSortedSet<Issue>((l: Issue, r: Issue) =>
-  l.id.localeCompare(r.id),
-);
 
-function onNewDiff(diff: Diff) {
-  if (diff.length === 0) {
-    return;
-  }
-
-  const start = performance.now();
-  materialite.tx(() => {
-    for (const diffOp of diff) {
-      if ('oldValue' in diffOp) {
-        allIssueSet.delete(
-          issueFromKeyAndValue(diffOp.key as string, diffOp.oldValue),
-        );
-      }
-      if ('newValue' in diffOp) {
-        allIssueSet.add(
-          issueFromKeyAndValue(diffOp.key as string, diffOp.newValue),
-        );
-      }
-    }
-  });
-
-  const duration = performance.now() - start;
-  console.log(`Diff duration: ${duration}ms`);
-}
-
-function filteredIssuesView(
-  source: IStatefulSource<Issue, MutableSetSource<Issue>['value']>,
-  order: Order,
-  filter: (i: Issue) => boolean,
-) {
-  return source.stream.filter(filter).materialize((l: Issue, r: Issue) => {
+function getOrderFn(order: Order) {
+  return (l: Issue, r: Issue) => {
     const comp = getOrderValue(order, l).localeCompare(getOrderValue(order, r));
     if (comp === 0) {
       return l.id.localeCompare(r.id);
     }
     return comp;
-  });
+  };
+}
+
+function filteredIssuesView(
+  source: IStatefulSource<Issue, MutableSetSource<Issue>['value']>,
+  comp: (l: Issue, r: Issue) => number,
+  filter: (i: Issue) => boolean,
+) {
+  return source.stream.filter(filter).materialize(comp);
 }
 
 function issueCountView(
@@ -102,8 +76,23 @@ const App = ({rep, undoManager}: AppProps) => {
   const [priorityFilter] = usePriorityFilterState();
   const [statusFilter] = useStatusFilterState();
   const [orderBy] = useOrderByState();
+  const [lastOrderBy, setLastOrderBy] = useState(orderBy);
   const [detailIssueID, setDetailIssueID] = useIssueDetailState();
   const [menuVisible, setMenuVisible] = useState(false);
+
+  const [allIssueSet, setAllIssueSet] = useState(() =>
+    materialite.newSortedSet<Issue>(getOrderFn(orderBy || 'MODIFIED')),
+  );
+
+  if (lastOrderBy !== orderBy) {
+    setLastOrderBy(orderBy);
+    // we need to derive a new set from the last set.
+    // the change is just the ordering...
+    // newSourceFrom(prevSource) or some such?
+    setAllIssueSet(
+      allIssueSet.withNewOrdering(getOrderFn(orderBy || 'MODIFIED')),
+    );
+  }
 
   const [issueViews, setIssueViews] = useState<IssueViews>({
     issueCount: 0,
@@ -111,15 +100,12 @@ const App = ({rep, undoManager}: AppProps) => {
     hasNonViewFilters: false,
   });
 
-  // TODO (mlaw): use the new materialite react hooks
   useEffect(() => {
     const start = performance.now();
     const filters = getFilters(view, priorityFilter, statusFilter);
-    console.log(filters);
-    const order = getIssueOrder(view, orderBy);
     const filterView = filteredIssuesView(
       allIssueSet,
-      order,
+      allIssueSet.comparator,
       filters.issuesFilter,
     );
     const countView = issueCountView(allIssueSet, filters.viewFilter);
@@ -147,10 +133,35 @@ const App = ({rep, undoManager}: AppProps) => {
     const end = performance.now();
     console.log(`Filter update duration: ${end - start}ms`);
     return () => {
-      allIssueSet.detachPipelines();
+      allIssueSet.destroy();
     };
     // stringify the filters to we don't re-run the effect on equal filters.
-  }, [priorityFilter?.toString(), statusFilter?.toString(), orderBy, view]);
+  }, [priorityFilter?.toString(), statusFilter?.toString(), allIssueSet, view]);
+
+  function onNewDiff(diff: Diff) {
+    if (diff.length === 0) {
+      return;
+    }
+
+    const start = performance.now();
+    materialite.tx(() => {
+      for (const diffOp of diff) {
+        if ('oldValue' in diffOp) {
+          allIssueSet.delete(
+            issueFromKeyAndValue(diffOp.key as string, diffOp.oldValue),
+          );
+        }
+        if ('newValue' in diffOp) {
+          allIssueSet.add(
+            issueFromKeyAndValue(diffOp.key as string, diffOp.newValue),
+          );
+        }
+      }
+    });
+
+    const duration = performance.now() - start;
+    console.log(`Diff duration: ${duration}ms`);
+  }
 
   const partialSync = useSubscribe<
     PartialSyncState | 'NOT_RECEIVED_FROM_SERVER'

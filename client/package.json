@@ -35,7 +35,8 @@
     "replicache-react": "3.0.0",
     "shared": "^0.1.0",
     "todomvc-app-css": "^2.4.2",
-    "@vlcn.io/materialite": "file:../../vulcan/materialite/public/packages/materialite"
+    "@vlcn.io/materialite": "file:../../vulcan/materialite/public/packages/materialite",
+    "@vlcn.io/materialite-react": "file:../../vulcan/materialite/public/packages/react"
   },
   "devDependencies": {
     "@rocicorp/eslint-config": "^0.1.2",
