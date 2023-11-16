@@ -11,7 +11,10 @@ import {generateKeyBetween} from 'fractional-indexing';
 import type {UndoManager} from '@rocicorp/undo';
 import {HotKeys} from 'react-hotkeys';
 import {
+  useCreatedFilterState,
+  useCreatorFilterState,
   useIssueDetailState,
+  useModifiedFilterState,
   useOrderByState,
   usePriorityFilterState,
   useStatusFilterState,
@@ -29,7 +32,19 @@ import {
   Order,
   PartialSyncState,
 } from 'shared';
-import {getFilters} from './filters';
+import {
+  getCreatedFilter,
+  getCreatorFilter,
+  getCreators,
+  hasNonViewFilters as doesHaveNonViewFilters,
+  getModifiedFilter,
+  getPriorities,
+  getPriorityFilter,
+  getStatuses,
+  getStatusFilter,
+  getViewFilter,
+  getViewStatuses,
+} from './filters';
 import {Layout} from './layout/layout';
 import {useExclusiveEffect} from './util/useLock';
 import {Materialite} from '@vlcn.io/materialite';
@@ -37,7 +52,7 @@ import {issueFromKeyAndValue} from './issue/issue';
 import {getOrderValue, IssueViews} from './reducer';
 import {IStatefulSource} from '@vlcn.io/materialite/dist/sources/Source';
 import {MutableSetSource} from '@vlcn.io/materialite/dist/sources/MutableSetSource';
-import {useSignal} from '@vlcn.io/materialite-react';
+import {AbstractDifferenceStream} from '@vlcn.io/materialite/dist/core/graph/AbstractDifferenceStream';
 
 type AppProps = {
   rep: Replicache<M>;
@@ -59,9 +74,16 @@ function getOrderFn(order: Order) {
 function filteredIssuesView(
   source: IStatefulSource<Issue, MutableSetSource<Issue>['value']>,
   comp: (l: Issue, r: Issue) => number,
-  filter: (i: Issue) => boolean,
+  filters: (((i: Issue) => boolean) | null)[],
 ) {
-  return source.stream.filter(filter).materialize(comp);
+  let {stream}: {stream: AbstractDifferenceStream<Issue>} = source;
+  for (const f of filters) {
+    if (!f) {
+      continue;
+    }
+    stream = stream.filter(f);
+  }
+  return stream.materialize(comp);
 }
 
 function issueCountView(
@@ -75,6 +97,9 @@ const App = ({rep, undoManager}: AppProps) => {
   const [view] = useViewState();
   const [priorityFilter] = usePriorityFilterState();
   const [statusFilter] = useStatusFilterState();
+  const [createdFilter] = useCreatedFilterState();
+  const [modifiedFilter] = useModifiedFilterState();
+  const [creatorFilter] = useCreatorFilterState();
   const [orderBy] = useOrderByState();
   const [lastOrderBy, setLastOrderBy] = useState(orderBy);
   const [detailIssueID, setDetailIssueID] = useIssueDetailState();
@@ -100,43 +125,70 @@ const App = ({rep, undoManager}: AppProps) => {
     hasNonViewFilters: false,
   });
 
-  useEffect(() => {
-    const start = performance.now();
-    const filters = getFilters(view, priorityFilter, statusFilter);
-    const filterView = filteredIssuesView(
-      allIssueSet,
-      allIssueSet.comparator,
-      filters.issuesFilter,
-    );
-    const countView = issueCountView(allIssueSet, filters.viewFilter);
-    filterView.on(data => {
+  useEffect(
+    () => {
+      const start = performance.now();
+      const viewStatuses = getViewStatuses(view);
+      const statuses = getStatuses(statusFilter);
+      const statusFilterFn = getStatusFilter(viewStatuses, statuses);
+      const viewFilterFn = getViewFilter(viewStatuses);
+      const filterFns = [
+        statusFilterFn,
+        getPriorityFilter(getPriorities(priorityFilter)),
+        getCreatorFilter(getCreators(creatorFilter)),
+        getCreatedFilter(createdFilter),
+        getModifiedFilter(modifiedFilter),
+      ];
+
+      const hasNonViewFilters = !!(
+        doesHaveNonViewFilters(viewStatuses, statuses) ||
+        filterFns.filter(f => f !== null && f !== statusFilterFn).length > 0
+      );
+
+      const filterView = filteredIssuesView(
+        allIssueSet,
+        allIssueSet.comparator,
+        filterFns,
+      );
+      const countView = issueCountView(allIssueSet, viewFilterFn);
+      filterView.on(data => {
+        setIssueViews(last => ({
+          ...last,
+          filteredIssues: data,
+          hasNonViewFilters,
+        }));
+      });
+      countView.on(data => {
+        setIssueViews(last => ({
+          ...last,
+          issueCount: data,
+          hasNonViewFilters,
+        }));
+      });
+
       setIssueViews(last => ({
         ...last,
-        filteredIssues: data,
-        hasNonViewFilters: filters.hasNonViewFilters,
+        issueCount: countView.value,
+        filteredIssues: filterView.value,
       }));
-    });
-    countView.on(data => {
-      setIssueViews(last => ({
-        ...last,
-        issueCount: data,
-        hasNonViewFilters: filters.hasNonViewFilters,
-      }));
-    });
 
-    setIssueViews(last => ({
-      ...last,
-      issueCount: countView.value,
-      filteredIssues: filterView.value,
-    }));
-
-    const end = performance.now();
-    console.log(`Filter update duration: ${end - start}ms`);
-    return () => {
-      allIssueSet.destroy();
-    };
+      const end = performance.now();
+      console.log(`Filter update duration: ${end - start}ms`);
+      return () => {
+        allIssueSet.destroy();
+      };
+    },
     // stringify the filters to we don't re-run the effect on equal filters.
-  }, [priorityFilter?.toString(), statusFilter?.toString(), allIssueSet, view]);
+    [
+      priorityFilter?.toString(),
+      statusFilter?.toString(),
+      allIssueSet,
+      view,
+      creatorFilter?.toString(),
+      createdFilter?.toString(),
+      modifiedFilter?.toString(),
+    ],
+  );
 
   function onNewDiff(diff: Diff) {
     if (diff.length === 0) {
