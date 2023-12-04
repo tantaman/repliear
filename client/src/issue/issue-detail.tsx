@@ -19,7 +19,6 @@ import {sortBy} from 'lodash';
 import {useIssueDetailState} from '../hooks/query-state-hooks';
 import {
   Comment,
-  Description,
   getDescription,
   getIssue,
   Issue,
@@ -88,7 +87,7 @@ export default function IssueDetail({
     }
   }, [issues, detailIssueID]);
 
-  const issue = useSubscribe<Issue | null>(
+  const issue = useSubscribe(
     rep,
     async tx => {
       if (detailIssueID) {
@@ -96,10 +95,12 @@ export default function IssueDetail({
       }
       return null;
     },
-    null,
-    [detailIssueID],
+    {
+      default: null,
+      dependencies: [detailIssueID],
+    },
   );
-  const description = useSubscribe<Description | null>(
+  const description = useSubscribe(
     rep,
     async tx => {
       if (detailIssueID) {
@@ -107,11 +108,13 @@ export default function IssueDetail({
       }
       return null;
     },
-    null,
-    [detailIssueID],
+    {
+      default: null,
+      dependencies: [detailIssueID],
+    },
   );
 
-  const comments = useSubscribe<Comment[] | []>(
+  const comments = useSubscribe(
     rep,
     async tx => {
       if (detailIssueID) {
@@ -119,8 +122,10 @@ export default function IssueDetail({
       }
       return [];
     },
-    [],
-    [detailIssueID],
+    {
+      default: [],
+      dependencies: [detailIssueID],
+    },
   );
 
   const handleClose = useCallback(async () => {
