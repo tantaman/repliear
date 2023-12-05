@@ -20,7 +20,8 @@ const issueComparators = Object.fromEntries(
 // We could build the indices on the fly when the user selects a given ordering.
 // Creating all the orderings up front for now.
 class IssueCollection {
-  #orderedIndices: Record<Order, MutableSetSource<Issue>>;
+  readonly #orderedIndices: Record<Order, MutableSetSource<Issue>>;
+
   constructor() {
     this.#orderedIndices = Object.fromEntries(
       orders.map(order => {
@@ -52,4 +53,5 @@ class IssueCollection {
 
 export const db = {
   issues: new IssueCollection(),
+  tx: m.tx.bind(m),
 };
