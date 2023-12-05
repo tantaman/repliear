@@ -126,7 +126,11 @@ const App = ({rep, undoManager}: AppProps) => {
   }, [rep]);
 
   useEffect(() => {
-    setFilters(getFilters(view, priorityFilter, statusFilter));
+    const f = getFilters(view, priorityFilter, statusFilter);
+    if (f.equals(filters)) {
+      return;
+    }
+    setFilters(f);
   }, [view, priorityFilter?.join(), statusFilter?.join()]);
 
   useEffect(() => {
