@@ -1,4 +1,5 @@
-
+- Materialite windowed queries virtual table
+- Materialite ordered source and unordered sink
 
 psql -d postgres -c 'create database repliear2'
 
