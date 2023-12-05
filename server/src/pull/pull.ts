@@ -3,11 +3,18 @@ import type {PatchOperation, PullResponse, PullResponseOKV1} from 'replicache';
 import {transact} from '../pg';
 import {getClientGroupForUpdate, putClientGroup, searchClients} from '../data';
 import type Express from 'express';
-import {hasNextPage, isPageEmpty, readNextPage} from './next-page';
+import {
+  hasNextPage,
+  isPageEmpty,
+  readNextPage,
+  fastforward,
+  getAllDeletes,
+  getAllUpdates,
+} from './next-page';
 import {
   CVR,
-  dropCVREntries,
   getCVR,
+  findMaxClientViewVersion,
   putCVR,
   recordDeletes,
   recordUpdates,
@@ -51,31 +58,54 @@ export async function pull(
         order: 0,
       };
 
-      // Drop any cvr entries greater than the order we received.
-      // Getting an old order from the client means that the client is possibly missing the data
-      // from future orders.
-      //
-      // Why do we delete later CVRs?
-      // Since we are sharing CVR data across orders (CVR_n = CVR_n-1 + current_pull).
-      // To keep greater CVRs around, which may have never been received, means that the next CVR would
-      // indicate that the data was received when it was not.
-      await dropCVREntries(executor, clientGroupID, baseCVR.order);
+      // 1. If is old cookie, fast-forward and return
+      // 2. Else --
+      //    1. Pull mutations
+      //    2. Pull deletes
+      //   If under limit --
+      //    3. Pull next page
+      //  4. Record cvr updates
 
-      const [clientChanges, nextPage] = await Promise.all([
+      const [clientChanges, maxClientViewVersion] = await Promise.all([
         searchClients(executor, {
           clientGroupID,
           sinceClientVersion: baseCVR.clientVersion,
         }),
-        readNextPage(executor, clientGroupID, baseCVR.order),
+        findMaxClientViewVersion(executor, clientGroupID),
       ]);
+
+      const [deletes, updates] = await Promise.all([
+        getAllDeletes(executor, clientGroupID, baseCVR.order),
+        getAllUpdates(executor, clientGroupID),
+      ]);
+
+      // first find everything that may have been modified
+      // then check fast forward and pagination
+
+      if (baseCVR.order < maxClientViewVersion) {
+        // fast forward and return
+        // similar to isPageEmpty
+        const fastForwardRows = await fastforward(
+          executor,
+          clientGroupID,
+          baseCVR.order,
+          deletes,
+          updates,
+        );
+      } else {
+        const nextPage = await readNextPage(
+          executor,
+          clientGroupID,
+          baseCVR.order,
+          updates,
+          deletes,
+        );
+      }
 
       console.log(
         `Pull received: ${nextPage.issues.length} issues,
         ${nextPage.descriptions.length} descriptions,
-        ${nextPage.comments.length} comments.
-        ${nextPage.issueDeletes.length} issue deletes,
-        ${nextPage.descriptionDeletes.length} description deletes,
-        ${nextPage.commentDeletes.length} comment deletes.`,
+        ${nextPage.comments.length} comments.`,
       );
       console.log(
         `Start ids for each: 

@@ -1,7 +1,11 @@
 import type {Executor} from '../pg';
-import type {SearchResult} from '../data';
 import type {Comment, Description, Issue} from 'shared';
-import {findDeletions, findUnsentItems} from './cvr';
+import {
+  findCreates,
+  findRowsForFastforward,
+  findDeletions,
+  findUpdates,
+} from './cvr';
 
 const LIMIT = 3000;
 
@@ -12,6 +16,18 @@ type Page = {
   issueDeletes: string[];
   descriptionDeletes: string[];
   commentDeletes: string[];
+};
+
+export type Deletes = {
+  issues: string[];
+  descriptions: string[];
+  comments: string[];
+};
+
+export type Updates = {
+  issues: Issue[];
+  descriptions: Description[];
+  comments: Comment[];
 };
 
 export function isPageEmpty(page: Page) {
@@ -38,149 +54,172 @@ export function hasNextPage(page: Page) {
   );
 }
 
+/**
+ * Fast forwards against all tables that are being synced.
+ */
+export async function fastforward(
+  executor: Executor,
+  clientGroupID: string,
+  cookieClientViewVersion: number,
+  deletes: Deletes,
+  updates: Updates,
+) {
+  const [issues, descriptions, comments] = await Promise.all([
+    findRowsForFastforward(
+      executor,
+      'issue',
+      clientGroupID,
+      cookieClientViewVersion,
+      deletes.issues.concat(updates.issues.map(i => i.id)),
+    ),
+    findRowsForFastforward(
+      executor,
+      'description',
+      clientGroupID,
+      cookieClientViewVersion,
+      deletes.descriptions.concat(updates.descriptions.map(i => i.id)),
+    ),
+    findRowsForFastforward(
+      executor,
+      'comment',
+      clientGroupID,
+      cookieClientViewVersion,
+      deletes.comments.concat(updates.comments.map(i => i.id)),
+    ),
+  ]);
+
+  return {
+    issues,
+    descriptions,
+    comments,
+  };
+}
+
+export async function getAllDeletes(
+  executor: Executor,
+  clientGroupID: string,
+  cookieClientViewVersion: number,
+) {
+  const [issues, descriptions, comments] = await Promise.all([
+    findDeletions(executor, 'issue', clientGroupID, cookieClientViewVersion),
+    findDeletions(
+      executor,
+      'description',
+      clientGroupID,
+      cookieClientViewVersion,
+    ),
+    findDeletions(executor, 'comment', clientGroupID, cookieClientViewVersion),
+  ]);
+
+  return {
+    issues,
+    descriptions,
+    comments,
+  };
+}
+
+/**
+ * Returns rows that the client has and have been modified on the server.
+ *
+ * We fetch these without limit so that the client always receives a total
+ * mutation and never a partial mutation result.
+ *
+ * @param executor
+ * @param clientGroupID
+ * @returns
+ */
+export async function getAllUpdates(executor: Executor, clientGroupID: string) {
+  const [issues, descriptions, comments] = await Promise.all([
+    findUpdates(executor, 'issue', clientGroupID),
+    findUpdates(executor, 'description', clientGroupID),
+    findUpdates(executor, 'comment', clientGroupID),
+  ]);
+
+  return {
+    issues,
+    descriptions,
+    comments,
+  };
+}
+
+// TODO: we can change the queries here.
+// We've already found:
+// 1. deletes
+// 2. mutations of stuff sent to client
+//
+// So now... we really just need things that do not exist in the cve table
+// and do exist in the base table. We can ignore version all together
+// since that would have been gathered in the first two steps.
+// This should also mean we do not need the exclusion list.
 export async function readNextPage(
   executor: Executor,
   clientGroupID: string,
   order: number,
+  deletes: Deletes,
+  updates: Updates,
 ) {
-  let remaining = LIMIT;
-  const issues: Issue[] = [];
-  const descriptions: Description[] = [];
-  const comments: Comment[] = [];
-
-  const issueDeletes: string[] = [];
-  const descriptionDeletes: string[] = [];
-  const commentDeletes: string[] = [];
-
-  const issueMeta: SearchResult[] = [];
-  const descriptionMeta: SearchResult[] = [];
-  const commentMeta: SearchResult[] = [];
-
-  function buildReturn() {
+  let remaining =
+    LIMIT -
+    deletes.issues.length -
+    deletes.descriptions.length -
+    deletes.comments.length -
+    updates.issues.length -
+    updates.descriptions.length -
+    updates.comments.length;
+  if (remaining <= 0) {
     return {
-      issues,
-      descriptions,
-      comments,
-      issueDeletes,
-      descriptionDeletes,
-      commentDeletes,
-      issueMeta,
-      descriptionMeta,
-      commentMeta,
+      issues: [],
+      descriptions: [],
+      comments: [],
     };
   }
 
-  // TODO: optimize to not require 3 queries in turn.
-  // Issue all of them at once and throw away results over limit?
-  // Issue a query just for `ids` and `versions` via a union then fulfill a page of data?
-  const {rows: issueRows} = await findUnsentItems(
+  // TODO: optimize to not require 3 queries in turn?
+  const issues = await findCreates(
     executor,
     'issue',
     clientGroupID,
     order,
     remaining,
   );
-  for (const r of issueRows) {
-    issueMeta.push({
-      id: r.id,
-      version: r.version,
-    });
-    issues.push({
-      id: r.id,
-      title: r.title,
-      priority: r.priority,
-      status: r.status,
-      modified: parseInt(r.modified),
-      created: parseInt(r.created),
-      creator: r.creator,
-      kanbanOrder: r.kanbanorder,
-    });
-  }
 
-  remaining -= issueRows.length;
+  remaining -= issues.length;
   if (remaining <= 0) {
-    return buildReturn();
+    return {
+      issues,
+      descriptions: [],
+      comments: [],
+    };
   }
 
-  const {rows: descriptionRows} = await findUnsentItems(
+  const descriptions = await findUnsentItems(
     executor,
     'description',
     clientGroupID,
     order,
     remaining,
   );
-  for (const r of descriptionRows) {
-    descriptionMeta.push({
-      id: r.id,
-      version: r.version,
-    });
-    descriptions.push({
-      id: r.id,
-      body: r.body,
-    });
-  }
 
-  remaining -= descriptionRows.length;
+  remaining -= descriptions.length;
   if (remaining <= 0) {
-    return buildReturn();
+    return {
+      issues,
+      descriptions,
+      comments: [],
+    };
   }
 
-  const {rows: commentRows} = await findUnsentItems(
+  const comments = await findUnsentItems(
     executor,
     'comment',
     clientGroupID,
     order,
     remaining,
   );
-  for (const r of commentRows) {
-    commentMeta.push({
-      id: r.id,
-      version: r.version,
-    });
-    comments.push({
-      id: r.id,
-      issueID: r.issueid,
-      created: parseInt(r.created),
-      body: r.body,
-      creator: r.creator,
-    });
-  }
 
-  remaining -= commentRows.length;
-  if (remaining <= 0) {
-    return buildReturn();
-  }
-
-  const [
-    {rows: issueDeleteRows},
-    {rows: descriptionDeleteRows},
-    {rows: commentDeleteRows},
-  ] = await Promise.all([
-    findDeletions(executor, 'issue', clientGroupID, order, remaining),
-    findDeletions(executor, 'description', clientGroupID, order, remaining),
-    findDeletions(executor, 'comment', clientGroupID, order, remaining),
-  ]);
-
-  for (const r of issueDeleteRows) {
-    issueDeletes.push(r.entity_id);
-  }
-  remaining -= issueDeleteRows.length;
-  if (remaining <= 0) {
-    return buildReturn();
-  }
-
-  for (const r of descriptionDeleteRows) {
-    descriptionDeletes.push(r.entity_id);
-  }
-  remaining -= descriptionDeleteRows.length;
-  if (remaining <= 0) {
-    return buildReturn();
-  }
-
-  for (const r of commentDeleteRows) {
-    commentDeletes.push(r.entity_id);
-  }
-  remaining -= commentDeleteRows.length;
-
-  return buildReturn();
+  return {
+    issues,
+    descriptions,
+    comments,
+  };
 }
