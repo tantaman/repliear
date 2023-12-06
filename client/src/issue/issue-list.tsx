@@ -83,6 +83,9 @@ const IssueList = ({onUpdateIssues, onOpenDetail, issues, view}: Props) => {
     [issues, handleChangePriority, handleChangeStatus, onOpenDetail],
   );
 
+  // console.log(issues.length);
+  // console.log(new Set(issues.map(issue => issue.id)).size);
+
   return (
     <div className="flex flex-col flex-grow overflow-auto">
       <AutoSizer>

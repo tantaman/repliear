@@ -96,6 +96,8 @@ async function pullInner(pull: PullRequest) {
         puts: updates,
         deletes,
       };
+      // We don't want to include the fast-forward entries in the next CVR.
+      const updatesForNextCVR = copyResponse(response);
 
       // Now find things that the client does not have.
       // Either a fast-forward through CVRs, excluding the updates and deleted we pulled
@@ -122,12 +124,11 @@ async function pullInner(pull: PullRequest) {
             executor,
             clientGroupID,
             cookieClientViewVersion, // we've fast-forwarded to these
-            deletes,
-            updates,
           ),
         'getPageOfCreates',
       );
       mergePuts(response.puts, creates);
+      mergePuts(updatesForNextCVR.puts, creates);
 
       // From: https://github.com/rocicorp/todo-row-versioning/blob/d8f351d040db9feae02b4847ea613fbc40aacd17/server/src/pull.ts#L103
       // If there is no clientGroupRecord this means one of two things:
@@ -181,8 +182,8 @@ async function pullInner(pull: PullRequest) {
       ]);
 
       await syncedTables.map(async t => {
-        const puts = response.puts[t];
-        const deletes = response.deletes[t];
+        const puts = updatesForNextCVR.puts[t];
+        const deletes = updatesForNextCVR.deletes[t];
         await Promise.all([
           time(
             () =>
@@ -385,13 +386,8 @@ export async function getPageOfCreates(
   executor: Executor,
   clientGroupID: string,
   order: number,
-  deletes: Deletes,
-  updates: Puts,
 ) {
-  let remaining =
-    LIMIT -
-    Object.values(deletes).reduce((acc, v) => acc + v.length, 0) -
-    Object.values(updates).reduce((acc, v) => acc + v.length, 0);
+  let remaining = LIMIT;
   const ret: Puts = Object.fromEntries(
     syncedTables.map(t => [t, []]),
   ) as unknown as Puts;
@@ -424,4 +420,14 @@ async function time<T>(cb: () => Promise<T>, msg: string) {
   const end = performance.now();
   console.log(`${msg} took ${end - start}ms`);
   return ret;
+}
+
+function copyResponse(response: PullRecords) {
+  const puts: Puts = Object.fromEntries(
+    syncedTables.map(t => [t, [...response.puts[t]]]),
+  ) as unknown as Puts;
+  const deletes: Deletes = Object.fromEntries(
+    syncedTables.map(t => [t, [...response.deletes[t]]]),
+  ) as unknown as Deletes;
+  return {puts, deletes};
 }
