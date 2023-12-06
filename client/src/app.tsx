@@ -26,6 +26,7 @@ import {
 import {getFilters, getIssueOrder} from './filters';
 import {Layout} from './layout/layout';
 import {timedReducer} from './reducer';
+import {useDebouncedCallback} from 'use-debounce';
 
 type AppProps = {
   rep: Replicache<M>;
@@ -56,10 +57,11 @@ const App = ({rep, undoManager}: AppProps) => {
     {default: 'NOT_RECEIVED_FROM_SERVER'},
   );
   const partialSyncComplete = partialSync === 'COMPLETE';
+  const pull = useDebouncedCallback(() => rep.pull(), 200);
   useEffect(() => {
     console.log('partialSync', partialSync);
     if (!partialSyncComplete) {
-      void rep.pull();
+      void pull();
     }
   }, [rep, partialSync, partialSyncComplete]);
 
@@ -67,7 +69,7 @@ const App = ({rep, undoManager}: AppProps) => {
     const ev = new EventSource(`/api/replicache/poke?channel=poke`);
     ev.onmessage = async () => {
       console.log('Receive poke. Pulling');
-      return rep.pull();
+      void pull();
     };
     return () => ev.close();
   }, []);

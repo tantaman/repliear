@@ -19,6 +19,8 @@ import {
   Deletes,
 } from './cvr';
 import {PartialSyncState, PARTIAL_SYNC_STATE_KEY} from 'shared';
+import AsyncLock from 'async-lock';
+const lock = new AsyncLock();
 
 const cookieSchema = z.object({
   order: z.number(),
@@ -31,6 +33,7 @@ export const pullRequest = z.object({
   clientGroupID: z.string(),
   cookie: z.union([cookieSchema, z.null()]),
 });
+type PullRequest = z.infer<typeof pullRequest>;
 
 export async function pull(
   requestBody: Express.Request,
@@ -38,6 +41,19 @@ export async function pull(
   const start = performance.now();
   console.log(`Processing pull`, JSON.stringify(requestBody, null, ''));
   const pull = pullRequest.parse(requestBody);
+
+  // Serialize access to the same client group here to prevent
+  // postgres from throwing as we serialize access to the same client group
+  // there too.
+  const ret = await lock.acquire(pull.clientGroupID, async () => {
+    return await pullInner(pull);
+  });
+  const end = performance.now();
+  console.log(`Processed pull in ${end - start}ms`);
+  return ret;
+}
+
+async function pullInner(pull: PullRequest) {
   const {clientGroupID} = pull;
 
   const {clientChanges, response, prevCVR, nextCVR} = await transact(
@@ -192,6 +208,17 @@ export async function pull(
 
   const patch: PatchOperation[] = [];
 
+  for (const t of syncedTables) {
+    console.log(`${t} puts: ${response.puts[t].length}`);
+    console.log(`${t} deletes: ${response.deletes[t].length}`);
+
+    console.log(
+      `${t} lastid: ${
+        response.puts[t][response.puts[t].length - 1]?.id || 'n/a'
+      }`,
+    );
+  }
+
   if (prevCVR === undefined) {
     patch.push({op: 'clear'});
   }
@@ -216,6 +243,14 @@ export async function pull(
         };
         casted.kanbanOrder = casted.kanbanorder;
         delete casted.kanbanorder;
+      }
+      if ('issueid' in put) {
+        const casted = put as unknown as {
+          issueID?: string;
+          issueid?: string;
+        };
+        casted.issueID = casted.issueid;
+        delete casted.issueid;
       }
       patch.push({op: 'put', key: `${t}/${put.id}`, value: put});
     }
@@ -245,8 +280,6 @@ export async function pull(
     ),
     patch,
   };
-  const end = performance.now();
-  console.log(`Processed pull in ${end - start}ms`);
   return resp;
 }
 
