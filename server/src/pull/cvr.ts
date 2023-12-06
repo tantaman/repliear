@@ -8,15 +8,27 @@ export type CVR = {
   order: number;
 };
 
+// These two consts drive the tables to sync.
+// Adding a new const here that is the name of a table will cause
+// the table to be synced.
 export const TableOrdinal = {
   issue: 1,
   description: 2,
   comment: 3,
 } as const;
-type TableType = {
+export type TableType = {
   issue: Issue & {version: number};
   description: Description & {version: number};
   comment: Comment & {version: number};
+};
+
+type SyncedTables = keyof typeof TableOrdinal;
+export const syncedTables = Object.keys(TableOrdinal) as SyncedTables[];
+export type Puts = {
+  [P in keyof TableType]: TableType[P][];
+};
+export type Deletes = {
+  [P in keyof TableType]: string[];
 };
 
 export async function getCVR(
@@ -49,7 +61,7 @@ export async function findMaxClientViewVersion(
   if (result.rowCount === 0) {
     return 0;
   }
-  return result.rows[0].max;
+  return result.rows[0].max as number;
 }
 
 export function putCVR(executor: Executor, cvr: CVR) {
@@ -78,8 +90,8 @@ export function putCVR(executor: Executor, cvr: CVR) {
  * @param table
  * @param clientGroupID
  * @param order
- * @param excludeIds - Every pull also gathers together all mutations of data that the client already has.
- * We can exclude these rows from the fast-forward if they've already been gathered.
+ * @param excludeIds - Pulls also gather together all mutations of data that the client already has.
+ * We can exclude these rows from the fast-forward since they've already been gathered.
  */
 export async function findRowsForFastforward<T extends keyof TableType>(
   executor: Executor,
@@ -101,22 +113,7 @@ export async function findRowsForFastforward<T extends keyof TableType>(
 }
 
 /**
- * Find all rows in a table that are not in our CVR table.
- * - either the id is not present
- * - or the version is different
  *
- * We could do cursoring to speed this along.
- * I.e., For a given pull sequence, we can keep track of the last id and version.
- * A "reset pull" brings cursor back to 0 to deal with privacy or query changes.
- *
- * But also, if the frontend drives the queries then we'll never actually be fetching
- * so much as the frontend queries will be reasonably sized. The frontend queries would also
- * be cursored.
- *
- * E.g., `SELECT * FROM issue WHERE modified > x OR (modified = y AND id > z) ORDER BY modified, id LIMIT 100`
- * Cursored on modified and id.
- *
- * This means our compare against the CVR would not be a full table scan of `issue`.
  */
 export async function findCreates<T extends keyof TableType>(
   executor: Executor,
@@ -125,19 +122,19 @@ export async function findCreates<T extends keyof TableType>(
   order: number,
   limit: number,
 ): Promise<TableType[T][]> {
-  // TODO (mlaw): swap to left join. It scales to more entries.
-  const sql = /*sql*/ `SELECT *
+  // Find all rows that exist in the base table but not in the CVR table.
+  // We do not look for rows that are in the CVR table but have a different version
+  // since those are handled by findUpdates.
+  const sql = /*sql*/ `SELECT t.*
       FROM "${table}" t
-      WHERE (t."id", t."version") NOT IN (
-        SELECT "entity_id", "entity_version"
-        FROM "client_view_entry"
-        WHERE "client_group_id" = $1
-          AND "client_view_version" <= $2
-          AND "entity" = $3
-      )
+      LEFT JOIN client_view_entry cve ON t.id = cve.entity_id AND
+      cve.entity = $1 AND
+      cve.client_group_id = $2 AND
+      cve.client_view_version <= $3
+      WHERE cve.entity_id IS NULL
       LIMIT $4;`;
 
-  const params = [clientGroupID, order, TableOrdinal[table], limit];
+  const params = [TableOrdinal[table], clientGroupID, order, limit];
   return (await executor(sql, params)).rows;
 }
 
@@ -145,7 +142,7 @@ export async function findCreates<T extends keyof TableType>(
  * Looks for rows that the client has that have been changed on the server.
  *
  * The basic idea here is to:
- * 1. Find all CVE entries that have a different row_version in the base table.
+ * Find all CVE entries that exist and have a different row_version in the base table.
  *
  * We don't want to find missing rows (that is done in findDeletions) so we use a natural join.
  */
@@ -156,11 +153,11 @@ export async function findUpdates<T extends keyof TableType>(
 ): Promise<TableType[T][]> {
   return (
     await executor(
-      /*sql*/ `SELECT t.* FROM client_view_entry AS cve
-    JOIN "${table}" AS t ON cve.entity_id = t.id WHERE 
-      cve.entity = $1 AND
-      cve.entity_version != t.version AND
-      cve.client_group_id = $2`,
+      /*sql*/ `SELECT t.* FROM "client_view_entry" AS cve
+      JOIN "${table}" AS t ON cve."entity_id" = t."id" WHERE 
+        cve."entity" = $1 AND
+        cve."entity_version" IS DISTINCT FROM t."version" AND
+        cve."client_group_id" = $2`,
       [TableOrdinal[table], clientGroupID],
     )
   ).rows;
@@ -186,7 +183,7 @@ export async function findUpdates<T extends keyof TableType>(
  * @param order
  * @returns
  */
-export async function findDeletions(
+export async function findDeletes(
   executor: Executor,
   table: keyof typeof TableOrdinal,
   clientGroupID: string,
@@ -197,7 +194,7 @@ export async function findDeletions(
       /*sql*/ `SELECT cve.entity_id as id FROM client_view_entry as cve
     WHERE cve.client_group_id = $1 AND
     ((cve.client_view_version <= $2 AND cve.entity_version IS NULL) OR cve.client_view_version > $2) AND
-    cve.entity = $3 EXCEPT SELECT t.id FROM "${table}"`,
+    cve.entity = $3 EXCEPT SELECT t.id FROM "${table}" as t`,
       [clientGroupID, order, TableOrdinal[table]],
     )
   ).rows.map(r => r.id);

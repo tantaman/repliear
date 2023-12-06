@@ -2,7 +2,7 @@ import type {Comment, Description, Issue} from 'shared';
 import type {Executor} from '../pg';
 import {getReactSampleData, SampleData} from './sample-issues';
 
-const batchSize = 2000;
+const batchSize = 1;
 /**
  * Seed the database with the initial data if the DB has not already been seeded.
  */

@@ -42,7 +42,7 @@ export const issueKeysToColumns = {
   modified: 'modified',
   created: 'created',
   creator: 'creator',
-  kanbanOrder: 'kanbanorder',
+  kanbanOrder: 'kanbanOrder',
 } as const;
 
 export const issueWithDescriptionSchema = z.object({
