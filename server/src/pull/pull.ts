@@ -19,8 +19,7 @@ import {
   Deletes,
 } from './cvr';
 import {PartialSyncState, PARTIAL_SYNC_STATE_KEY} from 'shared';
-import AsyncLock from 'async-lock';
-const lock = new AsyncLock();
+import {lock} from '../clientGroupLock';
 
 const cookieSchema = z.object({
   order: z.number(),
@@ -223,11 +222,13 @@ async function pullInner(pull: PullRequest) {
   if (prevCVR === undefined) {
     patch.push({op: 'clear'});
   }
+  const seen = new Set<string>();
   for (const t of syncedTables) {
-    for (const id of response.deletes[t]) {
-      patch.push({op: 'del', key: `${t}/${id}`});
-    }
     for (const put of response.puts[t]) {
+      if (seen.has(put.id)) {
+        continue;
+      }
+      seen.add(put.id);
       // Postgres rightly returns bigint as string given 64 bit ints are > js ints.
       // JS ints are 53 bits so we can safely convert to number for dates here.
       if ('created' in put) {
@@ -254,6 +255,9 @@ async function pullInner(pull: PullRequest) {
         delete casted.issueid;
       }
       patch.push({op: 'put', key: `${t}/${put.id}`, value: put});
+    }
+    for (const id of response.deletes[t]) {
+      patch.push({op: 'del', key: `${t}/${id}`});
     }
   }
 
