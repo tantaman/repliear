@@ -1,6 +1,9 @@
-import {test, expect} from 'vitest';
+import {test, expect, vi} from 'vitest';
 import {Deletes, Puts, syncedTables} from '../cvr';
 import {hasNextPage, isResponseEmpty, LIMIT, mergePuts} from '../pull';
+
+// mock out pg.
+vi.mock('../../pg');
 
 test('is response empty', () => {
   const response = {
