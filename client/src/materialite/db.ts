@@ -1,7 +1,7 @@
 import {Materialite} from '@vlcn.io/materialite';
 import {MutableSetSource} from '@vlcn.io/materialite/dist/sources/MutableSetSource';
 import {Issue, Order, orders} from 'shared';
-import {getOrderValue} from '../reducer';
+import {priorityOrderValues, statusOrderValues} from '../issue/issue';
 
 const m = new Materialite();
 const issueComparators = Object.fromEntries(
@@ -9,9 +9,35 @@ const issueComparators = Object.fromEntries(
     return [
       order,
       (l: Issue, r: Issue) => {
-        const lValue = getOrderValue(order, l);
-        const rValue = getOrderValue(order, r);
-        return lValue < rValue ? -1 : lValue > rValue ? 1 : 0;
+        let comp = 0;
+        switch (order) {
+          case 'CREATED':
+            comp = r.created - l.created;
+            break;
+          case 'MODIFIED':
+            comp = r.modified - l.modified;
+            break;
+          case 'STATUS':
+            comp = statusOrderValues[l.status] - statusOrderValues[r.status];
+            if (comp === 0) {
+              comp = r.modified - l.modified;
+            }
+            break;
+          case 'PRIORITY':
+            comp =
+              priorityOrderValues[l.priority] - priorityOrderValues[r.priority];
+            if (comp === 0) {
+              comp = r.modified - l.modified;
+            }
+            break;
+          case 'KANBAN':
+            comp = l.kanbanOrder.localeCompare(r.kanbanOrder);
+            break;
+        }
+        if (comp === 0) {
+          comp = l.id.localeCompare(r.id);
+        }
+        return comp;
       },
     ] as const;
   }),
