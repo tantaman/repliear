@@ -22,7 +22,7 @@ export type TableType = {
   comment: Comment & {version: number};
 };
 
-type SyncedTables = keyof typeof TableOrdinal;
+export type SyncedTables = keyof typeof TableOrdinal;
 export const syncedTables = Object.keys(TableOrdinal) as SyncedTables[];
 export type Puts = {
   [P in keyof TableType]: TableType[P][];
@@ -55,13 +55,13 @@ export async function findMaxClientViewVersion(
   clientGroupID: string,
 ) {
   const result = await executor(
-    /*sql*/ `SELECT MAX(client_view_version) AS max FROM client_view_entry WHERE client_group_id = $1`,
+    /*sql*/ `SELECT MAX("version") AS max FROM "client_view" WHERE "client_group_id" = $1`,
     [clientGroupID],
   );
   if (result.rowCount === 0) {
     return 0;
   }
-  return result.rows[0].max as number;
+  return result.rows[0].max || 0;
 }
 
 export function putCVR(executor: Executor, cvr: CVR) {
@@ -98,7 +98,7 @@ export async function findRowsForFastforward<T extends keyof TableType>(
   table: T,
   clientGroupID: string,
   order: number,
-  excludeIds: string[],
+  excludeIds: readonly string[],
 ): Promise<TableType[T][]> {
   const ret = await executor(
     /*sql*/ `SELECT t.* FROM client_view_entry AS cve
@@ -106,8 +106,8 @@ export async function findRowsForFastforward<T extends keyof TableType>(
       cve.entity = $1 AND
       cve.client_group_id = $2 AND
       cve.client_view_version > $3 AND
-      t.id NOT IN ($4)`,
-    [TableOrdinal[table], clientGroupID, order, excludeIds],
+      t.id NOT IN (${excludeIds.map((_, i) => '$' + (i + 4)).join(', ')})`,
+    [TableOrdinal[table], clientGroupID, order, ...excludeIds],
   );
   return ret.rows;
 }
@@ -119,7 +119,7 @@ export async function findCreates<T extends keyof TableType>(
   executor: Executor,
   table: T,
   clientGroupID: string,
-  order: number,
+  cookieClientViewVersion: number,
   limit: number,
 ): Promise<TableType[T][]> {
   // Find all rows that exist in the base table but not in the CVR table.
@@ -134,7 +134,12 @@ export async function findCreates<T extends keyof TableType>(
       WHERE cve.entity_id IS NULL
       LIMIT $4;`;
 
-  const params = [TableOrdinal[table], clientGroupID, order, limit];
+  const params = [
+    TableOrdinal[table],
+    clientGroupID,
+    cookieClientViewVersion,
+    limit,
+  ];
   return (await executor(sql, params)).rows;
 }
 
@@ -187,7 +192,7 @@ export async function findDeletes(
   executor: Executor,
   table: keyof typeof TableOrdinal,
   clientGroupID: string,
-  order: number,
+  cookieClientViewVersion: number,
 ): Promise<string[]> {
   return (
     await executor(
@@ -195,7 +200,7 @@ export async function findDeletes(
     WHERE cve.client_group_id = $1 AND
     ((cve.client_view_version <= $2 AND cve.entity_version IS NULL) OR cve.client_view_version > $2) AND
     cve.entity = $3 EXCEPT SELECT t.id FROM "${table}" as t`,
-      [clientGroupID, order, TableOrdinal[table]],
+      [clientGroupID, cookieClientViewVersion, TableOrdinal[table]],
     )
   ).rows.map(r => r.id);
 }
