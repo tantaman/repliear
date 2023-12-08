@@ -43,18 +43,22 @@ const issueComparators = Object.fromEntries(
   }),
 ) as Record<Order, (l: Issue, r: Issue) => number>;
 
-// We could build the indices on the fly when the user selects a given ordering.
-// Creating all the orderings up front for now.
+/**
+ * Maintains base collection and indices for issues
+ */
 class IssueCollection {
   readonly #orderedIndices = new Map<Order, MutableSetSource<Issue>>();
+  readonly #base = m.newUnorderedSet<string, Issue>((issue: Issue) => issue.id);
 
   add(issue: Issue) {
+    this.#base.add(issue);
     for (const index of this.#orderedIndices.values()) {
       index.add(issue);
     }
   }
 
   delete(issue: Issue) {
+    this.#base.delete(issue);
     for (const index of this.#orderedIndices.values()) {
       index.delete(issue);
     }
@@ -70,11 +74,8 @@ class IssueCollection {
       index = m.newSortedSet<Issue>(issueComparators[order]);
       const newIndex = index;
       m.tx(() => {
-        const existingIndex = [...this.#orderedIndices.values()][0];
-        if (existingIndex) {
-          for (const issue of existingIndex.value) {
-            newIndex.add(issue);
-          }
+        for (const issue of this.#base.value.values()) {
+          newIndex.add(issue);
         }
       });
       this.#orderedIndices.set(order, index);

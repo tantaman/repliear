@@ -54,15 +54,3 @@ export async function getIssueComments(
     return commentSchema.parse(val);
   });
 }
-
-const REVERSE_TIMESTAMP_LENGTH = Number.MAX_SAFE_INTEGER.toString().length;
-
-export function reverseTimestampSortKey(timestamp: number, id: string): string {
-  return (
-    Math.floor(Number.MAX_SAFE_INTEGER - timestamp)
-      .toString()
-      .padStart(REVERSE_TIMESTAMP_LENGTH, '0') +
-    '-' +
-    id
-  );
-}
