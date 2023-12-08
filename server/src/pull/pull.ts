@@ -226,6 +226,8 @@ async function pullInner(pull: PullRequest) {
   for (const t of syncedTables) {
     for (const put of response.puts[t]) {
       if (seen.has(put.id)) {
+        // TODO (mlaw): this should be impossible, right?
+        // Updates and creates are overlapping?
         continue;
       }
       seen.add(put.id);

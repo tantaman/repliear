@@ -198,7 +198,7 @@ export async function findDeletes(
     await executor(
       /*sql*/ `SELECT cve.entity_id as id FROM client_view_entry as cve
     WHERE cve.client_group_id = $1 AND
-    ((cve.client_view_version <= $2 AND cve.entity_version IS NULL) OR cve.client_view_version > $2) AND
+    ((cve.client_view_version <= $2 AND cve.entity_version IS NOT NULL) OR cve.client_view_version > $2) AND
     cve.entity = $3 EXCEPT SELECT t.id FROM "${table}" as t`,
       [clientGroupID, cookieClientViewVersion, TableOrdinal[table]],
     )
