@@ -161,11 +161,8 @@ function diffReducer(state: State, diff: Diff): State {
     }
     if (newFilteredIssues[index]?.id === oldIssue.id) {
       newFilteredIssues.splice(index, 1);
-    } else {
-      console.log('did not remove!', oldIssue, newFilteredIssues[index]);
     }
   }
-  console.log('DIFF: ', diff);
   for (const diffOp of diff) {
     switch (diffOp.op) {
       case 'add': {
