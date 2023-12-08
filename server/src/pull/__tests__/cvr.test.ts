@@ -438,6 +438,32 @@ test('findUpdates', async () => {
         }
       },
     ],
+    [
+      'Re-creations of previously deleted rows are not returned by findUpdates but rather returned by findCreates',
+      {
+        clientGroupID: nanoid(),
+        cookieClientViewVersion: 0,
+        excludeIds: [],
+      },
+      async (executor, args) => {
+        const issue = makeIssue();
+        const description = makeDescription();
+        const comment = makeComment();
+        await putIssue(executor, issue);
+        await putDescription(executor, description);
+        await createComment(executor, comment);
+        await recordDeletes(executor, 'issue', args.clientGroupID, 1, [
+          issue.id,
+        ]);
+        await recordDeletes(executor, 'description', args.clientGroupID, 1, [
+          description.id,
+        ]);
+        await recordDeletes(executor, 'comment', args.clientGroupID, 1, [
+          comment.id,
+        ]);
+      },
+      Object.fromEntries(syncedTables.map(t => [t, []])) as any,
+    ],
   ];
 
   await makeCheckCases(
@@ -448,8 +474,178 @@ test('findUpdates', async () => {
 });
 
 test('findCreates', async () => {
-  // test that creates and updates are disjoint sets
-  // does or does not find re-insertion?
+  const allCreated = (
+    msg: string,
+    table: SyncedTables,
+    rows: readonly {id: string}[],
+  ) => {
+    switch (table) {
+      case 'issue':
+        expect(
+          rows.map(r => r.id),
+          msg,
+        ).toEqual(['iss-0']);
+        break;
+      case 'description':
+        expect(
+          rows.map(r => r.id),
+          msg,
+        ).toEqual(['iss-0']);
+        break;
+      case 'comment':
+        expect(
+          rows.map(r => r.id),
+          msg,
+        ).toEqual(['com-0']);
+        break;
+    }
+  };
+
+  const cases: TestCase[] = [
+    [
+      'Empty tables so no rows',
+      {
+        clientGroupID: nanoid(),
+        cookieClientViewVersion: 0,
+        excludeIds: [],
+      },
+      async () => {
+        // empty
+      },
+      Object.fromEntries(syncedTables.map(t => [t, []])) as any,
+    ],
+    [
+      'Base table has entries that do not exist in the CVR. These will be returned as creates',
+      {
+        clientGroupID: nanoid(),
+        cookieClientViewVersion: 0,
+        excludeIds: [],
+      },
+      async (executor, _args) => {
+        const issue = makeIssue();
+        const description = makeDescription();
+        const comment = makeComment();
+        await putIssue(executor, issue);
+        await putDescription(executor, description);
+        await createComment(executor, comment);
+      },
+      allCreated,
+    ],
+    [
+      'Bas table and CVR have the same entries. Nothing returned as creates',
+      {
+        clientGroupID: nanoid(),
+        cookieClientViewVersion: 1,
+        excludeIds: [],
+      },
+      async (executor, args) => {
+        await putIssue(executor, makeIssue());
+        await putDescription(executor, makeDescription());
+        await createComment(executor, makeComment());
+        for (const table of syncedTables) {
+          const rows = await findCreates(
+            executor,
+            table,
+            args.clientGroupID,
+            0,
+            100,
+          );
+          await recordUpdates(executor, table, args.clientGroupID, 1, rows);
+        }
+      },
+      Object.fromEntries(syncedTables.map(t => [t, []])) as any,
+    ],
+    [
+      'Base table and CVR have the same entires but a 0 cookie is passed. Should return all rows as creates',
+      {
+        clientGroupID: nanoid(),
+        cookieClientViewVersion: 0,
+        excludeIds: [],
+      },
+      async (executor, args) => {
+        await putIssue(executor, makeIssue());
+        await putDescription(executor, makeDescription());
+        await createComment(executor, makeComment());
+        for (const table of syncedTables) {
+          const rows = await findCreates(
+            executor,
+            table,
+            args.clientGroupID,
+            0,
+            100,
+          );
+          await recordUpdates(executor, table, args.clientGroupID, 1, rows);
+        }
+      },
+      allCreated,
+    ],
+    [
+      'Base table has re-created entries. I.e., the CVR has them recorded as deletes',
+      {
+        clientGroupID: nanoid(),
+        cookieClientViewVersion: 0,
+        excludeIds: [],
+      },
+      async (executor, args) => {
+        const issue = makeIssue();
+        const description = makeDescription();
+        const comment = makeComment();
+        await putIssue(executor, issue);
+        await putDescription(executor, description);
+        await createComment(executor, comment);
+        await recordDeletes(executor, 'issue', args.clientGroupID, 1, [
+          issue.id,
+        ]);
+        await recordDeletes(executor, 'description', args.clientGroupID, 1, [
+          description.id,
+        ]);
+        await recordDeletes(executor, 'comment', args.clientGroupID, 1, [
+          comment.id,
+        ]);
+      },
+      allCreated,
+    ],
+    [
+      'Base table has entries that exist in the CVR at a different version. These will not be returned as they are updates',
+      {
+        clientGroupID: nanoid(),
+        cookieClientViewVersion: 1,
+        excludeIds: [],
+      },
+      async (executor, args) => {
+        const issue = makeIssue();
+        const desc = makeDescription();
+        await putIssue(executor, issue);
+        await putDescription(executor, desc);
+        await createComment(executor, makeComment());
+        for (const table of syncedTables) {
+          const rows = await findCreates(
+            executor,
+            table,
+            args.clientGroupID,
+            0,
+            100,
+          );
+          await recordUpdates(executor, table, args.clientGroupID, 1, rows);
+        }
+        await putIssue(executor, issue);
+        await putDescription(executor, desc);
+      },
+      Object.fromEntries(syncedTables.map(t => [t, []])) as any,
+    ],
+  ];
+
+  await makeCheckCases(
+    cases,
+    async (executor, table, args) =>
+      await findCreates(
+        executor,
+        table,
+        args.clientGroupID,
+        args.cookieClientViewVersion,
+        100,
+      ),
+  )();
 });
 
 async function clearTables(executor: Executor) {
@@ -459,7 +655,3 @@ async function clearTables(executor: Executor) {
   await executor(/*sql*/ `DELETE FROM "client_view"`);
   await executor(/*sql*/ `DELETE FROM "client_view_entry"`);
 }
-
-/*
-await putIssue(executor, makeIssue());
-*/

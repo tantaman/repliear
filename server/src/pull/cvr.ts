@@ -112,9 +112,6 @@ export async function findRowsForFastforward<T extends keyof TableType>(
   return ret.rows;
 }
 
-/**
- *
- */
 export async function findCreates<T extends keyof TableType>(
   executor: Executor,
   table: T,
@@ -156,12 +153,15 @@ export async function findUpdates<T extends keyof TableType>(
   table: T,
   clientGroupID: string,
 ): Promise<TableType[T][]> {
+  // `cve."entity_version" != t."version"` rather than `IS DISTINCT FROM` is intentional here.
+  // We do not want to return `updates` for items that were deleted and then re-created
+  // FindCreates will do that for us.
   return (
     await executor(
       /*sql*/ `SELECT t.* FROM "client_view_entry" AS cve
       JOIN "${table}" AS t ON cve."entity_id" = t."id" WHERE 
         cve."entity" = $1 AND
-        cve."entity_version" IS DISTINCT FROM t."version" AND
+        cve."entity_version" != t."version" AND
         cve."client_group_id" = $2`,
       [TableOrdinal[table], clientGroupID],
     )
