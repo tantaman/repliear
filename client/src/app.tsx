@@ -46,6 +46,7 @@ import {
   getStatusFilter,
   getViewFilter,
   getViewStatuses,
+  hasNonViewFilters as doesHaveNonViewFilters,
 } from './filters';
 
 type AppProps = {
@@ -88,6 +89,7 @@ const App = ({rep, undoManager}: AppProps) => {
   const [createdFilter] = useCreatedFilterState();
   const [creatorFilter] = useCreatorFilterState();
   const [modifiedFilter] = useModifiedFilterState();
+  const [hasNonViewFilters, setHasNonViewFilters] = useState(false);
 
   const [issueOrder, setIssueOrder] = useState(getIssueOrder(view, orderBy));
 
@@ -97,13 +99,20 @@ const App = ({rep, undoManager}: AppProps) => {
 
     const viewStatuses = getViewStatuses(view);
     const statuses = getStatuses(statusFilter);
+    const statusFilterFn = getStatusFilter(viewStatuses, statuses);
     const filterFns = [
-      getStatusFilter(viewStatuses, statuses),
+      statusFilterFn,
       getPriorityFilter(getPriorities(priorityFilter)),
       getCreatorFilter(getCreators(creatorFilter)),
       getCreatedFilter(createdFilter),
       getModifiedFilter(modifiedFilter),
     ];
+
+    const hasNonViewFilters = !!(
+      doesHaveNonViewFilters(viewStatuses, statuses) ||
+      filterFns.filter(f => f !== null && f !== statusFilterFn).length > 0
+    );
+    setHasNonViewFilters(hasNonViewFilters);
 
     let {stream} = source;
     for (const filter of filterFns) {
@@ -118,11 +127,11 @@ const App = ({rep, undoManager}: AppProps) => {
   }, [
     view,
     issueOrder,
-    priorityFilter,
-    statusFilter,
-    createdFilter,
-    creatorFilter,
-    modifiedFilter,
+    priorityFilter?.join(),
+    statusFilter?.join(),
+    createdFilter?.join(),
+    creatorFilter?.join(),
+    modifiedFilter?.join(),
   ]);
 
   const [, viewIssueCount] = useQuery(() => {
@@ -276,7 +285,7 @@ const App = ({rep, undoManager}: AppProps) => {
         viewIssueCount={viewIssueCount || 0}
         filteredIssues={filterdIssues}
         rep={rep}
-        hasNonViewFilters={false}
+        hasNonViewFilters={hasNonViewFilters}
         onCloseMenu={handleCloseMenu}
         onToggleMenu={handleToggleMenu}
         onUpdateIssues={handleUpdateIssues}
